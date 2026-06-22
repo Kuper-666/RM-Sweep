@@ -313,6 +313,153 @@ public class WindowsCleaner : ISystemCleaner
         return result;
     }
 
+    public async Task<bool> UninstallAppAsync(InstalledApp app, CancellationToken ct = default)
+    {
+        // Step 1: Find all leftover files BEFORE uninstall
+        var leftovers = FindLeftoverFiles(app, ct);
+
+        // Step 2: Run uninstaller
+        bool uninstalled = false;
+        if (!string.IsNullOrEmpty(app.UninstallString))
+        {
+            uninstalled = await Task.Run(() =>
+            {
+                try
+                {
+                    var uninstallCmd = app.UninstallString;
+
+                    if (uninstallCmd.StartsWith("MsiExec.exe", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var msiArgs = uninstallCmd.Replace("MsiExec.exe", "").Trim();
+                        if (!msiArgs.Contains("/qn"))
+                            msiArgs += " /qn";
+                        var psi = new ProcessStartInfo { FileName = "msiexec.exe", Arguments = msiArgs, UseShellExecute = true, Verb = "runas" };
+                        var process = Process.Start(psi);
+                        process?.WaitForExit(120000);
+                        return true;
+                    }
+
+                    if (uninstallCmd.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) ||
+                        uninstallCmd.Contains("uninstall", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var exePath = ExtractExePath(uninstallCmd);
+                        var args = uninstallCmd.Contains(" ")
+                            ? uninstallCmd.Substring(uninstallCmd.IndexOf(exePath) + exePath.Length).Trim()
+                            : "/S /silent /quiet";
+                        if (string.IsNullOrEmpty(args)) args = "/S /silent /quiet";
+                        var psi = new ProcessStartInfo { FileName = exePath, Arguments = args, UseShellExecute = true, Verb = "runas" };
+                        var process = Process.Start(psi);
+                        process?.WaitForExit(120000);
+                        return true;
+                    }
+
+                    var fallbackPsi = new ProcessStartInfo { FileName = "cmd.exe", Arguments = $"/c \"{uninstallCmd}\"", UseShellExecute = true, Verb = "runas" };
+                    var fallbackProcess = Process.Start(fallbackPsi);
+                    fallbackProcess?.WaitForExit(120000);
+                    return true;
+                }
+                catch { return false; }
+            }, ct);
+        }
+
+        // Step 3: Wait a moment for filesystem to settle
+        await Task.Delay(1000, ct);
+
+        // Step 4: Re-scan leftovers (some may appear after uninstall)
+        var postUninstallLeftovers = FindLeftoverFiles(app, ct);
+        var allLeftovers = leftovers.Concat(postUninstallLeftovers)
+            .GroupBy(l => l.Path)
+            .Select(g => g.First())
+            .ToList();
+
+        // Step 5: Delete all leftover files and directories
+        foreach (var leftover in allLeftovers)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var attrs = File.GetAttributes(leftover.Path);
+                if (attrs.HasFlag(FileAttributes.Directory))
+                {
+                    Directory.Delete(leftover.Path, recursive: true);
+                }
+                else
+                {
+                    File.Delete(leftover.Path);
+                }
+            }
+            catch { }
+        }
+
+        // Step 6: Clean registry entries for this app
+        CleanRegistryEntriesForApp(app.Name, ct);
+
+        return uninstalled || allLeftovers.Count > 0;
+    }
+
+    private static void CleanRegistryEntriesForApp(string appName, CancellationToken ct)
+    {
+        var uninstallKeys = new[]
+        {
+            (@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", Registry.LocalMachine),
+            (@"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall", Registry.LocalMachine),
+            (@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall", Registry.CurrentUser)
+        };
+
+        foreach (var (keyPath, hive) in uninstallKeys)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var key = hive.OpenSubKey(keyPath, writable: true);
+                if (key == null) continue;
+
+                foreach (var subKeyName in key.GetSubKeyNames())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        using var subKey = key.OpenSubKey(subKeyName);
+                        var name = subKey?.GetValue("DisplayName") as string;
+                        if (name != null && name.Equals(appName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            key.DeleteSubKeyTree(subKeyName, throwOnMissingSubKey: false);
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
+        // Also clean Run/RunOnce keys
+        var runKeys = new[]
+        {
+            (@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", Registry.CurrentUser),
+            (@"SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce", Registry.CurrentUser)
+        };
+
+        foreach (var (keyPath, hive) in runKeys)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                using var key = hive.OpenSubKey(keyPath, writable: true);
+                if (key == null) continue;
+
+                foreach (var valueName in key.GetValueNames())
+                {
+                    var value = key.GetValue(valueName) as string ?? "";
+                    if (value.Contains(appName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        key.DeleteValue(valueName, throwOnMissingValue: false);
+                    }
+                }
+            }
+            catch { }
+        }
+    }
+
     public async Task<List<InstalledApp>> ScanInstalledAppsAsync(
         IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
     {

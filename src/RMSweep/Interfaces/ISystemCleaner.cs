@@ -34,6 +34,9 @@ public interface ISystemCleaner
     /// <summary>Scan installed applications and find leftover/hidden files.</summary>
     Task<List<InstalledApp>> ScanInstalledAppsAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
 
+    /// <summary>Uninstall an application.</summary>
+    Task<bool> UninstallAppAsync(InstalledApp app, CancellationToken ct = default);
+
     /// <summary>Check if running with admin privileges.</summary>
     bool IsRunningAsAdmin();
 }

@@ -352,4 +352,47 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
             _cts = null;
         }
     }
+
+    [RelayCommand]
+    private async Task UninstallAppAsync(InstalledApp? app)
+    {
+        if (app == null || IsCleaning) return;
+
+        IsCleaning = true;
+        _cts = new CancellationTokenSource();
+        StatusText = $"Uninstalling {app.Name}...";
+
+        try
+        {
+            _logService.AddInfo(app.Name, "Starting uninstall + leftover cleanup...");
+
+            var result = await _cleaner.UninstallAppAsync(app, _cts.Token);
+
+            if (result)
+            {
+                _logService.AddSuccess(app.Name, "Uninstalled and cleaned up successfully");
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => InstalledApps.Remove(app));
+            }
+            else
+            {
+                _logService.AddWarning(app.Name, "Uninstall completed, some leftovers may remain");
+            }
+
+            StatusText = result ? $"Removed: {app.Name}" : $"Done: {app.Name}";
+        }
+        catch (OperationCanceledException)
+        {
+            _logService.AddWarning(app.Name, LocalizationService.GetString("OperationCancelled"));
+        }
+        catch (Exception ex)
+        {
+            _logService.AddError(app.Name, ex.Message);
+        }
+        finally
+        {
+            IsCleaning = false;
+            _cts?.Dispose();
+            _cts = null;
+        }
+    }
 }

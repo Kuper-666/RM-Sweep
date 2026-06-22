@@ -392,6 +392,77 @@ public class MacCleaner : ISystemCleaner
         return result;
     }
 
+    public async Task<bool> UninstallAppAsync(InstalledApp app, CancellationToken ct = default)
+    {
+        // Step 1: Find all leftover files BEFORE uninstall
+        var leftovers = FindMacLeftoverFiles(app, ct);
+
+        bool uninstalled = false;
+
+        // Step 2: Move app to Trash via osascript (proper macOS uninstall)
+        if (!string.IsNullOrEmpty(app.InstallLocation) && Directory.Exists(app.InstallLocation))
+        {
+            try
+            {
+                var script = $"tell application \"Finder\" to delete POSIX file \"{app.InstallLocation}\"";
+                await RunCommandAsync("osascript", $"-e '{script}'", ct);
+                uninstalled = true;
+            }
+            catch
+            {
+                // Fallback: rm -rf
+                try
+                {
+                    await RunCommandAsync("rm", $"-rf \"{app.InstallLocation}\"", ct);
+                    uninstalled = true;
+                }
+                catch { }
+            }
+        }
+
+        // Step 3: Wait for filesystem to settle
+        await Task.Delay(1000, ct);
+
+        // Step 4: Re-scan leftovers
+        var postUninstallLeftovers = FindMacLeftoverFiles(app, ct);
+        var allLeftovers = leftovers.Concat(postUninstallLeftovers)
+            .GroupBy(l => l.Path)
+            .Select(g => g.First())
+            .ToList();
+
+        // Step 5: Delete all leftover files and directories
+        foreach (var leftover in allLeftovers)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (Directory.Exists(leftover.Path))
+                    await RunCommandAsync("rm", $"-rf \"{leftover.Path}\"", ct);
+                else if (File.Exists(leftover.Path))
+                    File.Delete(leftover.Path);
+            }
+            catch { }
+        }
+
+        // Step 6: Clean plist files
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var prefsDir = Path.Combine(home, "Library", "Preferences");
+        if (Directory.Exists(prefsDir))
+        {
+            foreach (var plist in Directory.GetFiles(prefsDir, "*.plist"))
+            {
+                ct.ThrowIfCancellationRequested();
+                if (plist.Contains(app.Name, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrEmpty(app.Publisher) && plist.Contains(app.Publisher, StringComparison.OrdinalIgnoreCase)))
+                {
+                    try { File.Delete(plist); } catch { }
+                }
+            }
+        }
+
+        return uninstalled || allLeftovers.Count > 0;
+    }
+
     public async Task<List<InstalledApp>> ScanInstalledAppsAsync(
         IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
     {
