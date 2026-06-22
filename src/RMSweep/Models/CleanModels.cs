@@ -1,0 +1,56 @@
+namespace RMSweep.Models;
+
+public enum CleanOperation
+{
+    TemporaryFiles,
+    BrowserCache,
+    SystemSettings,
+    Autostart,
+    RecycleBin,
+    SystemLogs
+}
+
+public class CleanResult
+{
+    public bool Success { get; set; }
+    public string OperationName { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public long BytesFreed { get; set; }
+    public int FilesDeleted { get; set; }
+    public List<string> Errors { get; set; } = new();
+}
+
+public class CleanProgress
+{
+    public double PercentComplete { get; set; }
+    public string CurrentOperation { get; set; } = string.Empty;
+    public string StatusMessage { get; set; } = string.Empty;
+}
+
+public class LogEntry
+{
+    public DateTime Timestamp { get; set; }
+    public string Operation { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public string Details { get; set; } = string.Empty;
+    public LogLevel Level { get; set; } = LogLevel.Info;
+}
+
+public enum LogLevel
+{
+    Info,
+    Warning,
+    Error,
+    Success
+}
+
+public class AppSettings
+{
+    public bool CleanTemporaryFiles { get; set; } = true;
+    public bool CleanBrowserCache { get; set; } = true;
+    public bool CleanRecycleBin { get; set; } = false;
+    public bool CleanSystemSettings { get; set; } = false;
+    public bool CleanAutostart { get; set; } = false;
+    public bool CleanSystemLogs { get; set; } = false;
+    public string Language { get; set; } = "en-US";
+}

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="AppTitle" xml:space="preserve">
+    <value>RM-Sweep - Systemreiniger</value>
+  </data>
+  <data name="CleanTempFiles" xml:space="preserve">
+    <value>Temporäre Dateien</value>
+  </data>
+  <data name="CleanBrowserCache" xml:space="preserve">
+    <value>Browser-Cache</value>
+  </data>
+  <data name="CleanRecycleBin" xml:space="preserve">
+    <value>Papierkorb</value>
+  </data>
+  <data name="CleanSystemSettings" xml:space="preserve">
+    <value>Systemeinstellungen / Registry</value>
+  </data>
+  <data name="CleanAutostart" xml:space="preserve">
+    <value>Autostart</value>
+  </data>
+  <data name="CleanSystemLogs" xml:space="preserve">
+    <value>Systemprotokolle</value>
+  </data>
+  <data name="CleanButton" xml:space="preserve">
+    <value>Bereinigen</value>
+  </data>
+  <data name="CreateRestorePoint" xml:space="preserve">
+    <value>Wiederherstellungspunkt / Backup erstellen</value>
+  </data>
+  <data name="CancelButton" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="LogHeader" xml:space="preserve">
+    <value>Protokoll</value>
+  </data>
+  <data name="LanguageLabel" xml:space="preserve">
+    <value>Sprache:</value>
+  </data>
+  <data name="ThemeLabel" xml:space="preserve">
+    <value>Thema:</value>
+  </data>
+  <data name="ConfirmTitle" xml:space="preserve">
+    <value>Bereinigung bestätigen</value>
+  </data>
+  <data name="ConfirmMessage" xml:space="preserve">
+    <value>Sie sind dabei, die folgenden Bereiche zu bereinigen. Stellen Sie sicher, dass Sie ein Backup erstellt haben. Möchten Sie fortfahren?</value>
+  </data>
+  <data name="ConfirmButton" xml:space="preserve">
+    <value>Bestätigen</value>
+  </data>
+  <data name="AdminWarning" xml:space="preserve">
+    <value>Für die volle Funktionalität sind Administratorrechte erforderlich.</value>
+  </data>
+  <data name="NoAdminWarning" xml:space="preserve">
+    <value>Ohne Administratorrechte gestartet. Einige Vorgänge können eingeschränkt sein.</value>
+  </data>
+  <data name="LogInfo" xml:space="preserve">
+    <value>INFO</value>
+  </data>
+  <data name="LogSuccess" xml:space="preserve">
+    <value>ERFOLG</value>
+  </data>
+  <data name="LogWarning" xml:space="preserve">
+    <value>WARNUNG</value>
+  </data>
+  <data name="LogError" xml:space="preserve">
+    <value>FEHLER</value>
+  </data>
+  <data name="StartingOperation" xml:space="preserve">
+    <value>Starte...</value>
+  </data>
+  <data name="OperationCancelled" xml:space="preserve">
+    <value>Vorgang vom Benutzer abgebrochen</value>
+  </data>
+  <data name="CleaningComplete" xml:space="preserve">
+    <value>Bereinigung abgeschlossen</value>
+  </data>
+  <data name="Cancelling" xml:space="preserve">
+    <value>Abbrechen...</value>
+  </data>
+  <data name="CleaningTempFiles" xml:space="preserve">
+    <value>Bereinigung temporärer Dateien...</value>
+  </data>
+  <data name="CleaningBrowserCache" xml:space="preserve">
+    <value>Bereinigung Browser-Cache...</value>
+  </data>
+  <data name="CleaningRegistry" xml:space="preserve">
+    <value>Bereinigung der Registry...</value>
+  </data>
+  <data name="CleaningPreferences" xml:space="preserve">
+    <value>Bereinigung Einstellungen und Plist-Dateien...</value>
+  </data>
+  <data name="CleaningAutostart" xml:space="preserve">
+    <value>Bereinigung Autostart-Einträge...</value>
+  </data>
+  <data name="CleaningLoginItems" xml:space="preserve">
+    <value>Überprüfung der Login-Elemente...</value>
+  </data>
+  <data name="CleaningSystemLogs" xml:space="preserve">
+    <value>Bereinigung Systemprotokolle...</value>
+  </data>
+  <data name="EmptyingRecycleBin" xml:space="preserve">
+    <value>Papierkorb wird geleert...</value>
+  </data>
+  <data name="EmptyingTrash" xml:space="preserve">
+    <value>Papierkorb wird geleert...</value>
+  </data>
+  <data name="CreatingRestorePoint" xml:space="preserve">
+    <value>Wiederherstellungspunkt wird erstellt...</value>
+  </data>
+  <data name="CreatingSnapshot" xml:space="preserve">
+    <value>Time Machine-Snapshot wird erstellt...</value>
+  </data>
+  <data name="RestorePoint" xml:space="preserve">
+    <value>Wiederherstellungspunkt</value>
+  </data>
+  <data name="RestorePointComplete" xml:space="preserve">
+    <value>Wiederherstellungspunkt erfolgreich erstellt</value>
+  </data>
+</root>
