@@ -66,6 +66,28 @@ public class InstalledApp
     public List<LeftoverFile> Leftovers { get; set; } = new();
 }
 
+public class DiskInfo
+{
+    public string Name { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public long TotalBytes { get; set; }
+    public long FreeBytes { get; set; }
+    public long UsedBytes => TotalBytes - FreeBytes;
+    public double UsedPercent => TotalBytes > 0 ? (double)UsedBytes / TotalBytes * 100 : 0;
+    public string TotalFormatted => FormatBytes(TotalBytes);
+    public string FreeFormatted => FormatBytes(FreeBytes);
+    public string UsedFormatted => FormatBytes(UsedBytes);
+    public string UsageFormatted => $"{FormatBytes(UsedBytes)} / {FormatBytes(TotalBytes)}";
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        < 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):F1} MB",
+        _ => $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB"
+    };
+}
+
 public class LeftoverFile
 {
     public string Path { get; set; } = string.Empty;

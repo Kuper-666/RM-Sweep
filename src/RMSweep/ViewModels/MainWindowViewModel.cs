@@ -65,6 +65,7 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
     public ObservableCollection<LogEntry> LogEntries { get; } = new();
     public ObservableCollection<string> AvailableLanguages { get; } = new();
     public ObservableCollection<InstalledApp> InstalledApps { get; } = new();
+    public ObservableCollection<DiskInfo> Disks { get; } = new();
 
     public bool IsNotCleaning => !IsCleaning;
 
@@ -110,7 +111,27 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
         foreach (var lang in LocalizationService.GetAvailableLanguages())
             AvailableLanguages.Add(lang);
 
+        LoadDiskInfo();
         UpdateUILanguage();
+    }
+
+    private void LoadDiskInfo()
+    {
+        try
+        {
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                if (!drive.IsReady) continue;
+                Disks.Add(new DiskInfo
+                {
+                    Name = drive.Name,
+                    Label = drive.VolumeLabel,
+                    TotalBytes = drive.TotalSize,
+                    FreeBytes = drive.AvailableFreeSpace
+                });
+            }
+        }
+        catch { }
     }
 
     private void UpdateUILanguage()
