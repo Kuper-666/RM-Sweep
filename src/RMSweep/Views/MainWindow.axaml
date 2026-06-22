@@ -4,7 +4,6 @@
         x:Class="RMSweep.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding TitleText}"
-        Icon="/Assets/icon.png"
         Width="700" Height="600"
         MinWidth="600" MinHeight="500"
         WindowStartupLocation="CenterScreen"
