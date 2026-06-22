@@ -59,9 +59,12 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
     [ObservableProperty] private string _confirmButton = string.Empty;
     [ObservableProperty] private string _adminWarningText = string.Empty;
     [ObservableProperty] private string _noAdminWarning = string.Empty;
+    [ObservableProperty] private string _scanButtonText = string.Empty;
+    [ObservableProperty] private string _installedAppsHeaderText = string.Empty;
 
     public ObservableCollection<LogEntry> LogEntries { get; } = new();
     public ObservableCollection<string> AvailableLanguages { get; } = new();
+    public ObservableCollection<InstalledApp> InstalledApps { get; } = new();
 
     public bool IsNotCleaning => !IsCleaning;
 
@@ -130,6 +133,8 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
         ConfirmButton = LocalizationService.GetString("ConfirmButton");
         AdminWarningText = LocalizationService.GetString("AdminWarning");
         NoAdminWarning = LocalizationService.GetString("NoAdminWarning");
+        ScanButtonText = LocalizationService.GetString("ScanButton");
+        InstalledAppsHeaderText = LocalizationService.GetString("InstalledAppsHeader");
     }
 
     partial void OnSelectedLanguageChanged(string value)
@@ -298,5 +303,53 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
             ops[LocalizationService.GetString("CleanSystemLogs")] = _cleaner.CleanSystemLogsAsync;
 
         return ops;
+    }
+
+    [RelayCommand]
+    private async Task ScanInstalledAppsAsync()
+    {
+        if (IsCleaning) return;
+
+        IsCleaning = true;
+        _cts = new CancellationTokenSource();
+        LogEntries.Clear();
+        InstalledApps.Clear();
+        StatusText = LocalizationService.GetString("ScanningInstalledApps");
+
+        try
+        {
+            var progress = new Progress<CleanProgress>(p =>
+            {
+                ProgressValue = p.PercentComplete;
+                StatusText = p.StatusMessage;
+            });
+
+            var apps = await _cleaner.ScanInstalledAppsAsync(progress, _cts.Token);
+
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                foreach (var app in apps)
+                    InstalledApps.Add(app);
+            });
+
+            var totalLeftovers = apps.Sum(a => a.Leftovers.Count);
+            var hiddenFiles = apps.Sum(a => a.Leftovers.Count(l => l.IsHidden));
+            _logService.AddSuccess("Scan", $"Found {apps.Count} apps, {totalLeftovers} leftover items ({hiddenFiles} hidden)");
+            StatusText = $"Found {apps.Count} apps, {totalLeftovers} leftovers";
+        }
+        catch (OperationCanceledException)
+        {
+            _logService.AddWarning("Scan", LocalizationService.GetString("OperationCancelled"));
+        }
+        catch (Exception ex)
+        {
+            _logService.AddError("Scan", ex.Message);
+        }
+        finally
+        {
+            IsCleaning = false;
+            _cts?.Dispose();
+            _cts = null;
+        }
     }
 }

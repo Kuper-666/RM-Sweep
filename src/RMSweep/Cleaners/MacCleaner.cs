@@ -392,6 +392,138 @@ public class MacCleaner : ISystemCleaner
         return result;
     }
 
+    public async Task<List<InstalledApp>> ScanInstalledAppsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var apps = new List<InstalledApp>();
+
+        await Task.Run(async () =>
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var appDirs = new List<string>();
+
+            // /Applications
+            if (Directory.Exists("/Applications"))
+                appDirs.AddRange(Directory.GetDirectories("/Applications"));
+
+            // ~/Applications
+            var userApps = Path.Combine(home, "Applications");
+            if (Directory.Exists(userApps))
+                appDirs.AddRange(Directory.GetDirectories(userApps));
+
+            var total = appDirs.Count;
+            for (int i = 0; i < total; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var appDir = appDirs[i];
+                var appName = Path.GetFileNameWithoutExtension(appDir);
+
+                progress?.Report(new CleanProgress
+                {
+                    PercentComplete = (double)i / total * 100,
+                    CurrentOperation = $"Scanning: {appName}",
+                    StatusMessage = LocalizationService.GetString("ScanningInstalledApps")
+                });
+
+                var app = new InstalledApp
+                {
+                    Name = appName,
+                    InstallLocation = appDir,
+                    Publisher = ""
+                };
+
+                // Read Info.plist for bundle ID
+                var plistPath = Path.Combine(appDir, "Contents", "Info.plist");
+                if (File.Exists(plistPath))
+                {
+                    try
+                    {
+                        var plistContent = await File.ReadAllTextAsync(plistPath, ct);
+                        if (plistContent.Contains("CFBundleIdentifier"))
+                        {
+                            var start = plistContent.IndexOf("<string>", plistContent.IndexOf("CFBundleIdentifier"));
+                            if (start > 0)
+                            {
+                                start += 8;
+                                var end = plistContent.IndexOf("</string>", start);
+                                if (end > start)
+                                    app.Publisher = plistContent.Substring(start, end - start);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                // Scan for leftover files
+                app.Leftovers = FindMacLeftoverFiles(app, ct);
+                apps.Add(app);
+            }
+        }, ct);
+
+        return apps;
+    }
+
+    private static List<LeftoverFile> FindMacLeftoverFiles(InstalledApp app, CancellationToken ct)
+    {
+        var leftovers = new List<LeftoverFile>();
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        var searchPaths = new[]
+        {
+            Path.Combine(home, "Library", "Caches"),
+            Path.Combine(home, "Library", "Preferences"),
+            Path.Combine(home, "Library", "Application Support"),
+            Path.Combine(home, "Library", "Logs"),
+            Path.Combine(home, "Library", "Saved Application State"),
+            Path.Combine(home, "Library", "WebKit"),
+            "/Library/Caches",
+            "/Library/Logs",
+            "/Library/Application Support"
+        };
+
+        var searchTerms = new[] { app.Name, app.Publisher }
+            .Where(t => !string.IsNullOrEmpty(t)).ToArray();
+
+        foreach (var searchPath in searchPaths)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!Directory.Exists(searchPath)) continue;
+
+            foreach (var term in searchTerms)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    foreach (var dir in Directory.GetDirectories(searchPath, $"*{term}*", SearchOption.TopDirectoryOnly))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        // Skip if app is still installed
+                        if (app.InstallLocation != null && Directory.Exists(app.InstallLocation))
+                            continue;
+
+                        var info = new DirectoryInfo(dir);
+                        var isHidden = (info.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
+                        long size = 0;
+                        try { size = info.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length); }
+                        catch { }
+
+                        leftovers.Add(new LeftoverFile
+                        {
+                            Path = dir,
+                            IsHidden = isHidden,
+                            IsSystem = false,
+                            Size = size,
+                            Type = "Directory"
+                        });
+                    }
+                }
+                catch { }
+            }
+        }
+
+        return leftovers;
+    }
+
     // --- Private helpers ---
 
     private static async Task<bool> ValidatePlistAsync(string plistPath, CancellationToken ct)

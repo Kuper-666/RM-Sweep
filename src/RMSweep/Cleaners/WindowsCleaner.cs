@@ -313,6 +313,203 @@ public class WindowsCleaner : ISystemCleaner
         return result;
     }
 
+    public async Task<List<InstalledApp>> ScanInstalledAppsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var apps = new List<InstalledApp>();
+
+        await Task.Run(() =>
+        {
+            var uninstallKeys = new[]
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                @"SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall"
+            };
+
+            foreach (var keyPath in uninstallKeys)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    using var key = Registry.LocalMachine.OpenSubKey(keyPath);
+                    if (key == null) continue;
+
+                    foreach (var subKeyName in key.GetSubKeyNames())
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            using var subKey = key.OpenSubKey(subKeyName);
+                            if (subKey == null) continue;
+
+                            var name = subKey.GetValue("DisplayName") as string;
+                            if (string.IsNullOrEmpty(name)) continue;
+
+                            var installLocation = subKey.GetValue("InstallLocation") as string ?? "";
+                            var uninstallString = subKey.GetValue("UninstallString") as string ?? "";
+                            var publisher = subKey.GetValue("Publisher") as string ?? "";
+
+                            long estimatedSize = 0;
+                            var sizeVal = subKey.GetValue("EstimatedSize");
+                            if (sizeVal is int intSize) estimatedSize = intSize * 1024;
+
+                            apps.Add(new InstalledApp
+                            {
+                                Name = name,
+                                Publisher = publisher,
+                                InstallLocation = installLocation,
+                                UninstallString = uninstallString,
+                                EstimatedSize = estimatedSize
+                            });
+                        }
+                        catch { }
+                    }
+                }
+                catch { }
+            }
+
+            // Also scan user-uninstall keys
+            try
+            {
+                using var userKey = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                if (userKey != null)
+                {
+                    foreach (var subKeyName in userKey.GetSubKeyNames())
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            using var subKey = userKey.OpenSubKey(subKeyName);
+                            if (subKey == null) continue;
+
+                            var name = subKey.GetValue("DisplayName") as string;
+                            if (string.IsNullOrEmpty(name)) continue;
+                            if (apps.Any(a => a.Name == name)) continue;
+
+                            apps.Add(new InstalledApp
+                            {
+                                Name = name,
+                                Publisher = subKey.GetValue("Publisher") as string ?? "",
+                                InstallLocation = subKey.GetValue("InstallLocation") as string ?? "",
+                                UninstallString = subKey.GetValue("UninstallString") as string ?? "",
+                                EstimatedSize = 0
+                            });
+                        }
+                        catch { }
+                    }
+                }
+            }
+            catch { }
+
+            // Scan for leftover files for each app
+            var totalApps = apps.Count;
+            for (int i = 0; i < totalApps; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                var app = apps[i];
+
+                progress?.Report(new CleanProgress
+                {
+                    PercentComplete = (double)i / totalApps * 100,
+                    CurrentOperation = $"Scanning: {app.Name}",
+                    StatusMessage = LocalizationService.GetString("ScanningInstalledApps")
+                });
+
+                app.Leftovers = FindLeftoverFiles(app, ct);
+            }
+        }, ct);
+
+        return apps;
+    }
+
+    private static List<LeftoverFile> FindLeftoverFiles(InstalledApp app, CancellationToken ct)
+    {
+        var leftovers = new List<LeftoverFile>();
+        var searchLocations = new List<string>();
+
+        // AppData folders
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+
+        searchLocations.Add(appData);
+        searchLocations.Add(localAppData);
+        searchLocations.Add(programData);
+
+        // Add install location parent
+        if (!string.IsNullOrEmpty(app.InstallLocation) && Directory.Exists(app.InstallLocation))
+        {
+            var parent = Path.GetDirectoryName(app.InstallLocation);
+            if (parent != null) searchLocations.Add(parent);
+        }
+
+        var searchTerms = new List<string> { app.Name };
+        // Also search by publisher
+        if (!string.IsNullOrEmpty(app.Publisher))
+            searchTerms.Add(app.Publisher);
+
+        foreach (var location in searchLocations)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (!Directory.Exists(location)) continue;
+
+            foreach (var term in searchTerms)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var dirs = Directory.GetDirectories(location, $"*{term}*", SearchOption.TopDirectoryOnly);
+                    foreach (var dir in dirs)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var info = new DirectoryInfo(dir);
+                        var isHidden = (info.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
+                        var isSystem = (info.Attributes & FileAttributes.System) == FileAttributes.System;
+
+                        // Check if install location still exists
+                        if (!string.IsNullOrEmpty(app.InstallLocation) && Directory.Exists(app.InstallLocation))
+                            continue; // App is still installed, skip
+
+                        long size = 0;
+                        try { size = new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length); }
+                        catch { }
+
+                        leftovers.Add(new LeftoverFile
+                        {
+                            Path = dir,
+                            IsHidden = isHidden,
+                            IsSystem = isSystem,
+                            Size = size,
+                            Type = "Directory"
+                        });
+                    }
+
+                    // Search for files
+                    var files = Directory.GetFiles(location, $"*{term}*", SearchOption.TopDirectoryOnly);
+                    foreach (var file in files)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var info = new FileInfo(file);
+                        var isHidden = (info.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
+                        var isSystem = (info.Attributes & FileAttributes.System) == FileAttributes.System;
+
+                        leftovers.Add(new LeftoverFile
+                        {
+                            Path = file,
+                            IsHidden = isHidden,
+                            IsSystem = isSystem,
+                            Size = info.Length,
+                            Type = "File"
+                        });
+                    }
+                }
+                catch { }
+            }
+        }
+
+        return leftovers;
+    }
+
     // --- Private helpers ---
 
     private void CleanRegistryKeys(CancellationToken ct)

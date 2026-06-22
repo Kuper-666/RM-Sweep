@@ -156,4 +156,25 @@
   <data name="RestorePointComplete" xml:space="preserve">
     <value>Restore point created successfully</value>
   </data>
+  <data name="ScanInstalledApps" xml:space="preserve">
+    <value>Scanning installed applications...</value>
+  </data>
+  <data name="InstalledAppsHeader" xml:space="preserve">
+    <value>Installed Applications</value>
+  </data>
+  <data name="LeftoverFiles" xml:space="preserve">
+    <value>Leftover files found</value>
+  </data>
+  <data name="HiddenFiles" xml:space="preserve">
+    <value>Hidden files</value>
+  </data>
+  <data name="ScanButton" xml:space="preserve">
+    <value>Scan Installed Apps</value>
+  </data>
+  <data name="AppPublisher" xml:space="preserve">
+    <value>Publisher</value>
+  </data>
+  <data name="AppSize" xml:space="preserve">
+    <value>Size</value>
+  </data>
 </root>

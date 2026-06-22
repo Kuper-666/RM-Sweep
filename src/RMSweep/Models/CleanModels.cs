@@ -52,5 +52,25 @@ public class AppSettings
     public bool CleanSystemSettings { get; set; } = false;
     public bool CleanAutostart { get; set; } = false;
     public bool CleanSystemLogs { get; set; } = false;
+    public bool ScanInstalledApps { get; set; } = true;
     public string Language { get; set; } = "en-US";
+}
+
+public class InstalledApp
+{
+    public string Name { get; set; } = string.Empty;
+    public string Publisher { get; set; } = string.Empty;
+    public string InstallLocation { get; set; } = string.Empty;
+    public string UninstallString { get; set; } = string.Empty;
+    public long EstimatedSize { get; set; }
+    public List<LeftoverFile> Leftovers { get; set; } = new();
+}
+
+public class LeftoverFile
+{
+    public string Path { get; set; } = string.Empty;
+    public bool IsHidden { get; set; }
+    public bool IsSystem { get; set; }
+    public long Size { get; set; }
+    public string Type { get; set; } = string.Empty;
 }

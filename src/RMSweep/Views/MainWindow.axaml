@@ -4,8 +4,8 @@
         x:Class="RMSweep.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="{Binding TitleText}"
-        Width="700" Height="600"
-        MinWidth="600" MinHeight="500"
+        Width="900" Height="650"
+        MinWidth="700" MinHeight="500"
         WindowStartupLocation="CenterScreen"
         Background="#1e1e2e">
 
@@ -39,12 +39,12 @@
                        HorizontalAlignment="Left" VerticalAlignment="Center"/>
         </Border>
 
-        <!-- Main Content -->
-            <Grid ColumnDefinitions="280,*">
+        <!-- Main Content: 3 columns -->
+        <Grid ColumnDefinitions="260,*,320">
 
             <!-- Left Panel: Options -->
             <Border Grid.Column="0" Background="#313244" CornerRadius="8" Padding="16" Margin="0,0,6,0">
-                <StackPanel Spacing="12">
+                <StackPanel Spacing="10">
                     <TextBlock Text="Options" FontWeight="SemiBold" FontSize="14" Foreground="#cdd6f4"/>
 
                     <CheckBox Content="{Binding TempFilesText}"
@@ -71,15 +71,14 @@
                               IsChecked="{Binding CleanSystemLogs}"
                               Foreground="#cdd6f4"/>
 
-                    <Separator Background="#45475a" Margin="0,8"/>
+                    <Separator Background="#45475a" Margin="0,4"/>
 
-                    <!-- Action Buttons -->
                     <Button Content="{Binding CleanButtonText}"
                             Command="{Binding StartCleaningCommand}"
                             IsVisible="{Binding IsNotCleaning}"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
-                            Height="40" FontSize="14" FontWeight="SemiBold"
+                            Height="38" FontSize="13" FontWeight="SemiBold"
                             Background="#a6e3a1" Foreground="#1e1e2e"
                             CornerRadius="6"/>
 
@@ -88,7 +87,7 @@
                             IsVisible="{Binding IsCleaning}"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
-                            Height="40" FontSize="14"
+                            Height="38" FontSize="13"
                             Background="#f38ba8" Foreground="#1e1e2e"
                             CornerRadius="6"/>
 
@@ -97,14 +96,25 @@
                             IsVisible="{Binding IsNotCleaning}"
                             HorizontalAlignment="Stretch"
                             HorizontalContentAlignment="Center"
-                            Height="36" FontSize="12"
+                            Height="34" FontSize="11"
                             Background="#89b4fa" Foreground="#1e1e2e"
+                            CornerRadius="6"/>
+
+                    <Separator Background="#45475a" Margin="0,4"/>
+
+                    <Button Content="{Binding ScanButtonText}"
+                            Command="{Binding ScanInstalledAppsCommand}"
+                            IsVisible="{Binding IsNotCleaning}"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Height="34" FontSize="11"
+                            Background="#cba6f7" Foreground="#1e1e2e"
                             CornerRadius="6"/>
                 </StackPanel>
             </Border>
 
-            <!-- Right Panel: Log -->
-            <Border Grid.Column="1" Background="#313244" CornerRadius="8" Padding="12" Margin="6,0,0,0">
+            <!-- Middle Panel: Log -->
+            <Border Grid.Column="1" Background="#313244" CornerRadius="8" Padding="12" Margin="6,0">
                 <Grid RowDefinitions="Auto,*,Auto">
                     <TextBlock Grid.Row="0" Text="{Binding LogHeaderText}"
                                FontWeight="SemiBold" FontSize="14" Foreground="#cdd6f4"
@@ -140,6 +150,45 @@
                     <ProgressBar Grid.Row="2" Value="{Binding ProgressValue}"
                                  Maximum="100" Height="6" Margin="0,8,0,0"
                                  Foreground="#a6e3a1" Background="#45475a"/>
+                </Grid>
+            </Border>
+
+            <!-- Right Panel: Installed Apps -->
+            <Border Grid.Column="2" Background="#313244" CornerRadius="8" Padding="12" Margin="6,0,0,0">
+                <Grid RowDefinitions="Auto,*">
+                    <TextBlock Grid.Row="0" Text="{Binding InstalledAppsHeaderText}"
+                               FontWeight="SemiBold" FontSize="14" Foreground="#cdd6f4"
+                               Margin="0,0,0,8"/>
+
+                    <Border Grid.Row="1" Background="#1e1e2e" CornerRadius="6" Padding="4">
+                        <ListBox ItemsSource="{Binding InstalledApps}"
+                                 Background="Transparent"
+                                 Foreground="#cdd6f4"
+                                 FontSize="11">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Padding="8" Margin="2"
+                                            Background="#313244" CornerRadius="4">
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{Binding Name}"
+                                                       FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="#cdd6f4"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock FontSize="10" Foreground="#a6adc8"
+                                                       TextWrapping="Wrap">
+                                                <TextBlock.Text>
+                                                    <MultiBinding StringFormat="Leftovers: {0} | Hidden: {1}">
+                                                        <Binding Path="Leftovers.Count"/>
+                                                        <Binding Path="Leftovers.Count"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Border>
                 </Grid>
             </Border>
         </Grid>
