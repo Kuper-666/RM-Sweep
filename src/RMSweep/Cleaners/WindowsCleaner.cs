@@ -41,17 +41,133 @@ public class WindowsCleaner : ISystemCleaner
         {
             var tempPaths = new List<string>();
 
-            // User temp
-            var userTemp = Environment.GetFolderPath(Environment.SpecialFolder.InternetCache);
+            // %TEMP% и %WINDIR%\Temp
             tempPaths.Add(Path.GetTempPath());
-
-            // Windows temp
             var winTemp = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory)!, "Windows", "Temp");
             if (Directory.Exists(winTemp)) tempPaths.Add(winTemp);
 
             // Prefetch
             var prefetch = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory)!, "Windows", "Prefetch");
             if (Directory.Exists(prefetch)) tempPaths.Add(prefetch);
+
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+
+            // WebCache (Explorer icons/web views)
+            var webCache = Path.Combine(localAppData, "Microsoft", "Windows", "WebCache");
+            if (Directory.Exists(webCache)) tempPaths.Add(webCache);
+
+            // WER ReportQueue (crash reports - gigabytes)
+            var werPath = Path.Combine(programData, "Microsoft", "Windows", "WER", "ReportQueue");
+            if (Directory.Exists(werPath)) tempPaths.Add(werPath);
+            var werPathUser = Path.Combine(localAppData, "Microsoft", "Windows", "WER", "ReportQueue");
+            if (Directory.Exists(werPathUser)) tempPaths.Add(werPathUser);
+
+            // Windows logs
+            var winLogs = Path.Combine(Path.GetPathRoot(Environment.SystemDirectory)!, "Windows", "Logs");
+            if (Directory.Exists(winLogs)) tempPaths.Add(winLogs);
+
+            // --- Game launchers ---
+            // Steam cache
+            var steamCache = Path.Combine(localAppData, "Steam", "cache");
+            if (Directory.Exists(steamCache)) tempPaths.Add(steamCache);
+            // Battle.net cache
+            var bnetCache = Path.Combine(localAppData, "Battle.net", "Cache");
+            if (Directory.Exists(bnetCache)) tempPaths.Add(bnetCache);
+            // Epic Games logs
+            var epicLogs = Path.Combine(localAppData, "EpicGamesLauncher", "Saved", "Logs");
+            if (Directory.Exists(epicLogs)) tempPaths.Add(epicLogs);
+            // Discord cache
+            var discordCache = Path.Combine(localAppData, "Discord", "Cache");
+            if (Directory.Exists(discordCache)) tempPaths.Add(discordCache);
+            var discordCodeCache = Path.Combine(localAppData, "Discord", "Code Cache");
+            if (Directory.Exists(discordCodeCache)) tempPaths.Add(discordCodeCache);
+            // Telegram cache
+            var telegramCache = Path.Combine(appData, "TelegramDesktop", "Cache");
+            if (Directory.Exists(telegramCache)) tempPaths.Add(telegramCache);
+
+            // --- Adobe cache ---
+            var adobeCache = Path.Combine(appData, "Adobe", "Common", "Media Cache");
+            if (Directory.Exists(adobeCache)) tempPaths.Add(adobeCache);
+            var adobeCacheFiles = Path.Combine(appData, "Adobe", "Common", "Media Cache Files");
+            if (Directory.Exists(adobeCacheFiles)) tempPaths.Add(adobeCacheFiles);
+
+            // --- MS Office ---
+            var officeCache = Path.Combine(localAppData, "Microsoft", "Office", "16.0", "WebCache");
+            if (Directory.Exists(officeCache)) tempPaths.Add(officeCache);
+            var officeCacheOld = Path.Combine(localAppData, "Microsoft", "Office", "15.0", "WebCache");
+            if (Directory.Exists(officeCacheOld)) tempPaths.Add(officeCacheOld);
+
+            // --- Browser caches ---
+            // Chrome
+            var chromeCache = Path.Combine(localAppData, "Google", "Chrome", "User Data", "Default", "Cache");
+            if (Directory.Exists(chromeCache)) tempPaths.Add(chromeCache);
+            var chromeCodeCache = Path.Combine(localAppData, "Google", "Chrome", "User Data", "Default", "Code Cache");
+            if (Directory.Exists(chromeCodeCache)) tempPaths.Add(chromeCodeCache);
+            // Edge
+            var edgeCache = Path.Combine(localAppData, "Microsoft", "Edge", "User Data", "Default", "Cache");
+            if (Directory.Exists(edgeCache)) tempPaths.Add(edgeCache);
+            var edgeCodeCache = Path.Combine(localAppData, "Microsoft", "Edge", "User Data", "Default", "Code Cache");
+            if (Directory.Exists(edgeCodeCache)) tempPaths.Add(edgeCodeCache);
+            // Firefox (find profile wildcard)
+            var firefoxProfiles = Path.Combine(appData, "Mozilla", "Firefox", "Profiles");
+            if (Directory.Exists(firefoxProfiles))
+            {
+                foreach (var profile in Directory.GetDirectories(firefoxProfiles))
+                {
+                    var ffCache = Path.Combine(profile, "cache2");
+                    if (Directory.Exists(ffCache)) tempPaths.Add(ffCache);
+                }
+            }
+            // Opera
+            var operaCache = Path.Combine(appData, "Opera Software", "Opera Stable", "Cache");
+            if (Directory.Exists(operaCache)) tempPaths.Add(operaCache);
+
+            // --- AppData generic cache/temp/crash ---
+            var cacheNames = new[] { "Cache", "cache", "CrashDumps", "D3DSCache",
+                "IconCache", "MediaCache", "Code Cache", "GPUCache",
+                "Service Worker", "Temp", "tmp",
+                "Downloaded Installations", "DownloadedPrograms" };
+
+            if (Directory.Exists(localAppData))
+            {
+                foreach (var cacheName in cacheNames)
+                {
+                    var cachePath = Path.Combine(localAppData, cacheName);
+                    if (Directory.Exists(cachePath)) tempPaths.Add(cachePath);
+                }
+
+                foreach (var dir in Directory.GetDirectories(localAppData))
+                {
+                    var dirName = Path.GetFileName(dir);
+                    if (dirName.StartsWith(".")) continue;
+
+                    var subCacheNames = new[] { "Cache", "cache", "CrashDumps", "Code Cache",
+                        "GPUCache", "Service Worker", "Temp", "tmp", "logs", "Logs" };
+
+                    foreach (var sub in subCacheNames)
+                    {
+                        var subPath = Path.Combine(dir, sub);
+                        if (Directory.Exists(subPath)) tempPaths.Add(subPath);
+                    }
+                }
+            }
+
+            if (Directory.Exists(appData))
+            {
+                foreach (var dir in Directory.GetDirectories(appData))
+                {
+                    var subCacheNames = new[] { "Cache", "cache", "CrashDumps", "Code Cache",
+                        "GPUCache", "Temp", "tmp", "logs", "Logs" };
+
+                    foreach (var sub in subCacheNames)
+                    {
+                        var subPath = Path.Combine(dir, sub);
+                        if (Directory.Exists(subPath)) tempPaths.Add(subPath);
+                    }
+                }
+            }
 
             var totalPaths = tempPaths.Count;
             for (int i = 0; i < totalPaths; i++)

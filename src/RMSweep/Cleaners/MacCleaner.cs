@@ -51,9 +51,91 @@ public class MacCleaner : ISystemCleaner
             {
                 "/tmp",
                 "/var/tmp",
+                "/var/log",
                 Path.Combine(home, ".Trash"),
-                Path.GetTempPath()
+                Path.GetTempPath(),
+
+                // ~/Library/Caches (main cache location)
+                Path.Combine(home, "Library", "Caches"),
+                // Logs
+                Path.Combine(home, "Library", "Logs"),
+                // Saved application state
+                Path.Combine(home, "Library", "Saved Application State"),
+                // WebKit cache
+                Path.Combine(home, "Library", "WebKit"),
+                // HTTP storage
+                Path.Combine(home, "Library", "HTTPStorages"),
+                // Cookies
+                Path.Combine(home, "Library", "Cookies"),
+                // System caches
+                "/Library/Caches",
+                "/Library/Logs"
             };
+
+            // Browser caches on Mac
+            var browserPaths = new[]
+            {
+                Path.Combine(home, "Library", "Caches", "Google", "Chrome"),
+                Path.Combine(home, "Library", "Caches", "com.google.Chrome"),
+                Path.Combine(home, "Library", "Caches", "com.google.Chrome.Canary"),
+                Path.Combine(home, "Library", "Caches", "com.microsoft.edgemac"),
+                Path.Combine(home, "Library", "Caches", "Firefox"),
+                Path.Combine(home, "Library", "Caches", "com.operasoftware.Opera"),
+                Path.Combine(home, "Library", "Caches", "Safari"),
+                Path.Combine(home, "Library", "Application Support", "Google", "Chrome", "Default", "Cache"),
+                Path.Combine(home, "Library", "Application Support", "Microsoft", "Edge", "Default", "Cache"),
+            };
+            foreach (var bp in browserPaths)
+                if (Directory.Exists(bp)) tempPaths.Add(bp);
+
+            // Steam cache on Mac
+            var steamPaths = new[]
+            {
+                Path.Combine(home, "Library", "Application Support", "Steam"),
+                Path.Combine(home, "Library", "Caches", "Steam"),
+            };
+            foreach (var sp in steamPaths)
+                if (Directory.Exists(sp)) tempPaths.Add(sp);
+
+            // Discord on Mac
+            var discordPaths = new[]
+            {
+                Path.Combine(home, "Library", "Caches", "com.discord.Discord"),
+                Path.Combine(home, "Library", "Application Support", "Discord", "Cache"),
+                Path.Combine(home, "Library", "Application Support", "Discord", "Code Cache"),
+            };
+            foreach (var dp in discordPaths)
+                if (Directory.Exists(dp)) tempPaths.Add(dp);
+
+            // Telegram on Mac
+            var tgCache = Path.Combine(home, "Library", "Group Containers", "U6N74UHJXM.net.telegram.desktop", "Data", "Library", "Caches");
+            if (Directory.Exists(tgCache)) tempPaths.Add(tgCache);
+
+            // Adobe on Mac
+            var adobePaths = new[]
+            {
+                Path.Combine(home, "Library", "Caches", "Adobe"),
+                Path.Combine(home, "Library", "Application Support", "Adobe", "Common", "Media Cache"),
+            };
+            foreach (var ap in adobePaths)
+                if (Directory.Exists(ap)) tempPaths.Add(ap);
+
+            // Per-app Cache subdirs inside ~/Library/Caches
+            var libCaches = Path.Combine(home, "Library", "Caches");
+            if (Directory.Exists(libCaches))
+            {
+                try
+                {
+                    foreach (var dir in Directory.GetDirectories(libCaches))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var innerCache = Path.Combine(dir, "Cache");
+                        if (Directory.Exists(innerCache))
+                            tempPaths.Add(innerCache);
+                    }
+                }
+                catch { }
+            }
 
             var total = tempPaths.Count;
             for (int i = 0; i < total; i++)
