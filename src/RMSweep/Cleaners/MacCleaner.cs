@@ -418,6 +418,9 @@ public class MacCleaner : ISystemCleaner
                 var appDir = appDirs[i];
                 var appName = Path.GetFileNameWithoutExtension(appDir);
 
+                // Skip system apps
+                if (IsMacSystemApp(appDir, appName)) continue;
+
                 progress?.Report(new CleanProgress
                 {
                     PercentComplete = (double)i / total * 100,
@@ -525,6 +528,36 @@ public class MacCleaner : ISystemCleaner
     }
 
     // --- Private helpers ---
+
+    private static bool IsMacSystemApp(string appDir, string appName)
+    {
+        var systemApps = new[]
+        {
+            "Safari", "Mail", "Messages", "FaceTime", "Maps", "Photos",
+            "Calendar", "Contacts", "Notes", "Reminders", "Music",
+            "Podcasts", "TV", "News", "Stocks", "Books", "Home",
+            "Voice Memos", "Preview", "TextEdit", "QuickTime Player",
+            "Chess", "Stickies", "Digital Color Meter", "Grapher",
+            "Activity Monitor", "Console", "Disk Utility", "Keychain Access",
+            "Migration Assistant", "Boot Camp Assistant", "System Information",
+            "Font Book", "Image Capture", "Script Editor", "Automator",
+            "Xcode", "Instruments", "Accessibility Inspector",
+            "System Preferences", "System Settings"
+        };
+
+        foreach (var sysApp in systemApps)
+        {
+            if (appName.Equals(sysApp, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        // Skip Apple system directories
+        if (appDir.StartsWith("/System/Applications", StringComparison.OrdinalIgnoreCase) ||
+            appDir.StartsWith("/System/Library", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return false;
+    }
 
     private static async Task<bool> ValidatePlistAsync(string plistPath, CancellationToken ct)
     {

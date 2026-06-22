@@ -345,9 +345,25 @@ public class WindowsCleaner : ISystemCleaner
                             var name = subKey.GetValue("DisplayName") as string;
                             if (string.IsNullOrEmpty(name)) continue;
 
+                            // Skip system components
+                            var systemComponent = subKey.GetValue("SystemComponent");
+                            if (systemComponent is int sc && sc == 1) continue;
+
+                            var parentName = subKey.GetValue("ParentDisplayName") as string;
+                            if (!string.IsNullOrEmpty(parentName)) continue;
+
+                            var releaseType = subKey.GetValue("ReleaseType") as string ?? "";
+                            if (releaseType.Equals("Update", StringComparison.OrdinalIgnoreCase) ||
+                                releaseType.Equals("Security Update", StringComparison.OrdinalIgnoreCase) ||
+                                releaseType.Equals("Hotfix", StringComparison.OrdinalIgnoreCase)) continue;
+
                             var installLocation = subKey.GetValue("InstallLocation") as string ?? "";
                             var uninstallString = subKey.GetValue("UninstallString") as string ?? "";
                             var publisher = subKey.GetValue("Publisher") as string ?? "";
+
+                            // Skip known system publishers
+                            if (IsSystemPublisher(publisher)) continue;
+                            if (IsSystemApp(name, installLocation)) continue;
 
                             long estimatedSize = 0;
                             var sizeVal = subKey.GetValue("EstimatedSize");
@@ -385,6 +401,12 @@ public class WindowsCleaner : ISystemCleaner
                             var name = subKey.GetValue("DisplayName") as string;
                             if (string.IsNullOrEmpty(name)) continue;
                             if (apps.Any(a => a.Name == name)) continue;
+
+                            var systemComponent = subKey.GetValue("SystemComponent");
+                            if (systemComponent is int sc2 && sc2 == 1) continue;
+
+                            var publisher = subKey.GetValue("Publisher") as string ?? "";
+                            if (IsSystemPublisher(publisher)) continue;
 
                             apps.Add(new InstalledApp
                             {
@@ -511,6 +533,77 @@ public class WindowsCleaner : ISystemCleaner
     }
 
     // --- Private helpers ---
+
+    private static bool IsSystemPublisher(string publisher)
+    {
+        var sysPublishers = new[]
+        {
+            "Microsoft Corporation",
+            "Microsoft Windows",
+            "Microsoft",
+            "Intel",
+            "Intel(R) Software and Firmware Products",
+            "NVIDIA",
+            "Realtek",
+            "Qualcomm",
+            "Synaptics",
+            "AMD",
+            "Broadcom",
+            "Dell Inc.",
+            "HP Inc.",
+            "Lenovo",
+            "Samsung",
+            "Apple Inc.",
+            "Google LLC"
+        };
+
+        return sysPublishers.Any(sp =>
+            publisher.Contains(sp, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsSystemApp(string name, string location)
+    {
+        var systemNames = new[]
+        {
+            "Microsoft Visual C++",
+            "Microsoft .NET",
+            "Microsoft Windows",
+            "Windows SDK",
+            "Windows Driver",
+            "Windows Update",
+            "DirectX",
+            "VC Redist",
+            "vcredist",
+            "Redistributable",
+            "Runtime",
+            "Update for",
+            "Security Update",
+            "Hotfix",
+            "Cumulative Update"
+        };
+
+        foreach (var sys in systemNames)
+        {
+            if (name.Contains(sys, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        // Skip Windows system directories
+        if (!string.IsNullOrEmpty(location))
+        {
+            var winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+            var progFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            var progFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+            if (location.StartsWith(winDir, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (location.Equals(progFiles, StringComparison.OrdinalIgnoreCase) ||
+                location.Equals(progFilesX86, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    }
 
     private void CleanRegistryKeys(CancellationToken ct)
     {
