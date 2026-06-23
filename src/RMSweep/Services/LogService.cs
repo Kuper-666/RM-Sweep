@@ -1,3 +1,4 @@
+using System.Globalization;
 using RMSweep.Models;
 
 namespace RMSweep.Services;
@@ -104,8 +105,8 @@ public class LogService
     private static string FormatBytes(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
-        < 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):F1} MB",
-        _ => $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB"
+        < 1024 * 1024 => string.Format(CultureInfo.InvariantCulture, "{0:F1} KB", bytes / 1024.0),
+        < 1024 * 1024 * 1024 => string.Format(CultureInfo.InvariantCulture, "{0:F1} MB", bytes / (1024.0 * 1024.0)),
+        _ => string.Format(CultureInfo.InvariantCulture, "{0:F2} GB", bytes / (1024.0 * 1024.0 * 1024.0))
     };
 }

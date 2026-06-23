@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using RMSweep.Interfaces;
@@ -525,11 +526,22 @@ public class WindowsCleaner : ISystemCleaner
         foreach (var (keyPath, hive) in uninstallKeys)
         {
             ct.ThrowIfCancellationRequested();
+            RegistryKey? key = null;
             try
             {
-                using var key = hive.OpenSubKey(keyPath, writable: true);
-                if (key == null) continue;
+                key = hive.OpenSubKey(keyPath, writable: true);
+            }
+            catch (System.Security.SecurityException)
+            {
+                // No write access to HKLM without admin - skip
+                continue;
+            }
+            catch { continue; }
 
+            if (key == null) continue;
+
+            try
+            {
                 foreach (var subKeyName in key.GetSubKeyNames())
                 {
                     ct.ThrowIfCancellationRequested();
@@ -545,7 +557,10 @@ public class WindowsCleaner : ISystemCleaner
                     catch { }
                 }
             }
-            catch { }
+            finally
+            {
+                key.Dispose();
+            }
         }
 
         // Also clean Run/RunOnce keys
@@ -712,7 +727,6 @@ public class WindowsCleaner : ISystemCleaner
         var leftovers = new List<LeftoverFile>();
         var searchLocations = new List<string>();
 
-        // AppData folders
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
@@ -721,17 +735,38 @@ public class WindowsCleaner : ISystemCleaner
         searchLocations.Add(localAppData);
         searchLocations.Add(programData);
 
-        // Add install location parent
         if (!string.IsNullOrEmpty(app.InstallLocation) && Directory.Exists(app.InstallLocation))
         {
             var parent = Path.GetDirectoryName(app.InstallLocation);
             if (parent != null) searchLocations.Add(parent);
         }
 
-        var searchTerms = new List<string> { app.Name };
-        // Also search by publisher
-        if (!string.IsNullOrEmpty(app.Publisher))
-            searchTerms.Add(app.Publisher);
+        var searchTerms = new List<string>();
+        if (!string.IsNullOrEmpty(app.Name))
+        {
+            var cleanName = app.Name
+                .Replace("(64-bit x64)", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("(x86)", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("64-bit", "", StringComparison.OrdinalIgnoreCase)
+                .Replace("  ", " ", StringComparison.OrdinalIgnoreCase)
+                .Trim();
+
+            if (cleanName.Length >= 3)
+                searchTerms.Add(cleanName);
+
+            var firstWord = cleanName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (firstWord != null && firstWord.Length >= 3 && firstWord != cleanName)
+                searchTerms.Add(firstWord);
+        }
+
+        if (!string.IsNullOrEmpty(app.Publisher) && app.Publisher.Length >= 4)
+        {
+            var pubFirst = app.Publisher.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (pubFirst != null && pubFirst.Length >= 4)
+                searchTerms.Add(pubFirst);
+        }
+
+        if (searchTerms.Count == 0) return leftovers;
 
         foreach (var location in searchLocations)
         {
@@ -747,16 +782,20 @@ public class WindowsCleaner : ISystemCleaner
                     foreach (var dir in dirs)
                     {
                         ct.ThrowIfCancellationRequested();
+                        var dirName = Path.GetFileName(dir);
+
+                        if (!string.IsNullOrEmpty(app.InstallLocation) &&
+                            dir.Equals(app.InstallLocation, StringComparison.OrdinalIgnoreCase))
+                            continue;
+
+                        if (IsKnownSystemDir(dirName)) continue;
+
                         var info = new DirectoryInfo(dir);
                         var isHidden = (info.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
                         var isSystem = (info.Attributes & FileAttributes.System) == FileAttributes.System;
 
-                        // Check if install location still exists
-                        if (!string.IsNullOrEmpty(app.InstallLocation) && Directory.Exists(app.InstallLocation))
-                            continue; // App is still installed, skip
-
                         long size = 0;
-                        try { size = new DirectoryInfo(dir).EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length); }
+                        try { size = info.EnumerateFiles("*", SearchOption.AllDirectories).Sum(f => f.Length); }
                         catch { }
 
                         leftovers.Add(new LeftoverFile
@@ -769,30 +808,47 @@ public class WindowsCleaner : ISystemCleaner
                         });
                     }
 
-                    // Search for files
                     var files = Directory.GetFiles(location, $"*{term}*", SearchOption.TopDirectoryOnly);
                     foreach (var file in files)
                     {
                         ct.ThrowIfCancellationRequested();
                         var info = new FileInfo(file);
-                        var isHidden = (info.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
-                        var isSystem = (info.Attributes & FileAttributes.System) == FileAttributes.System;
 
-                        leftovers.Add(new LeftoverFile
+                        var ext = info.Extension.ToLower();
+                        if (ext is ".log" or ".tmp" or ".db" or ".ini" or ".cfg")
                         {
-                            Path = file,
-                            IsHidden = isHidden,
-                            IsSystem = isSystem,
-                            Size = info.Length,
-                            Type = "File"
-                        });
+                            var isHidden = (info.Attributes & FileAttributes.Hidden) == FileAttributes.Hidden;
+                            var isSystem = (info.Attributes & FileAttributes.System) == FileAttributes.System;
+
+                            leftovers.Add(new LeftoverFile
+                            {
+                                Path = file,
+                                IsHidden = isHidden,
+                                IsSystem = isSystem,
+                                Size = info.Length,
+                                Type = "File"
+                            });
+                        }
                     }
                 }
                 catch { }
             }
         }
 
-        return leftovers;
+        return leftovers.GroupBy(l => l.Path).Select(g => g.First()).ToList();
+    }
+
+    private static bool IsKnownSystemDir(string dirName)
+    {
+        var systemDirs = new[]
+        {
+            "Microsoft", "Google", "Adobe", "NVIDIA", "Intel", "AMD",
+            "Packages", "MicrosoftEdge", "Microsoft.CSharp", "NuGet",
+            "Class", "System", "Temp", "CrashDumps", "D3DSCache",
+            "ConnectedSearch", "Windows", "AppData", "Local", "Roaming",
+            "Programs", "Microsoft.NET", "Package Cache"
+        };
+        return systemDirs.Any(s => dirName.Equals(s, StringComparison.OrdinalIgnoreCase));
     }
 
     // --- Private helpers ---
@@ -882,17 +938,26 @@ public class WindowsCleaner : ISystemCleaner
         foreach (var (subKeyPath, hive) in runKeys)
         {
             ct.ThrowIfCancellationRequested();
+            RegistryKey? key = null;
             try
             {
-                using var key = hive.OpenSubKey(subKeyPath, writable: true);
-                if (key == null) continue;
+                key = hive.OpenSubKey(subKeyPath, writable: true);
+            }
+            catch (System.Security.SecurityException)
+            {
+                continue;
+            }
+            catch { continue; }
 
+            if (key == null) continue;
+
+            try
+            {
                 foreach (var valueName in key.GetValueNames())
                 {
                     var value = key.GetValue(valueName) as string;
                     if (string.IsNullOrEmpty(value)) continue;
 
-                    // Check if the referenced executable exists
                     var exePath = ExtractExePath(value);
                     if (!string.IsNullOrEmpty(exePath) && !File.Exists(exePath))
                     {
@@ -903,6 +968,10 @@ public class WindowsCleaner : ISystemCleaner
             catch
             {
                 // Skip keys we cannot access
+            }
+            finally
+            {
+                key.Dispose();
             }
         }
     }
@@ -1024,10 +1093,796 @@ public class WindowsCleaner : ISystemCleaner
         return (filesDeleted, bytesFreed);
     }
 
-    // --- P/Invoke for Recycle Bin ---
+    public async Task<CleanResult> CleanDnsCacheAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "DNS Cache" };
+
+        try
+        {
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 50,
+                StatusMessage = "Flushing DNS cache..."
+            });
+
+            await Task.Run(() =>
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "ipconfig",
+                    Arguments = "/flushdns",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var process = Process.Start(psi);
+                process?.WaitForExit(10000);
+            }, ct);
+
+            result.Success = true;
+            result.Message = "DNS cache flushed successfully";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> CleanClipboardAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Clipboard" };
+
+        try
+        {
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 50,
+                StatusMessage = "Clearing clipboard..."
+            });
+
+            await Task.Run(() =>
+            {
+                OpenClipboard(IntPtr.Zero);
+                EmptyClipboard();
+                CloseClipboard();
+            }, ct);
+
+            result.Success = true;
+            result.Message = "Clipboard cleared successfully";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> CleanRecentDocumentsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Recent Documents" };
+
+        try
+        {
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 20,
+                StatusMessage = "Clearing recent documents..."
+            });
+
+            var recentPath = Environment.GetFolderPath(Environment.SpecialFolder.Recent);
+            if (Directory.Exists(recentPath))
+            {
+                var (deleted, freed) = await CleanDirectoryAsync(recentPath, ct);
+                result.FilesDeleted = deleted;
+                result.BytesFreed = freed;
+            }
+
+            // Also clean Recent folder in AppData
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            var recentAlt = Path.Combine(appData, "Microsoft", "Windows", "Recent");
+            if (Directory.Exists(recentAlt) && recentAlt != recentPath)
+            {
+                var (deleted, freed) = await CleanDirectoryAsync(recentAlt, ct);
+                result.FilesDeleted += deleted;
+                result.BytesFreed += freed;
+            }
+
+            // Clean Jump Lists
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var jumpListPath = Path.Combine(localAppData, "Microsoft", "Windows", "Recent", "AutomaticDestinations");
+            if (Directory.Exists(jumpListPath))
+            {
+                var (deleted, freed) = await CleanDirectoryAsync(jumpListPath, ct);
+                result.FilesDeleted += deleted;
+                result.BytesFreed += freed;
+            }
+
+            var jumpListCustom = Path.Combine(localAppData, "Microsoft", "Windows", "Recent", "CustomDestinations");
+            if (Directory.Exists(jumpListCustom))
+            {
+                var (deleted, freed) = await CleanDirectoryAsync(jumpListCustom, ct);
+                result.FilesDeleted += deleted;
+                result.BytesFreed += freed;
+            }
+
+            // Clear registry MRU lists
+            var mruKeys = new[]
+            {
+                (@"Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs", Registry.CurrentUser),
+                (@"Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU", Registry.CurrentUser),
+                (@"Software\Microsoft\Windows\CurrentVersion\Explorer\TypedPaths", Registry.CurrentUser),
+                (@"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\OpenSaveMRU", Registry.CurrentUser),
+                (@"Software\Microsoft\Windows\CurrentVersion\Explorer\ComDlg32\LastVisitedMRU", Registry.CurrentUser)
+            };
+
+            foreach (var (keyPath, hive) in mruKeys)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    using var key = hive.OpenSubKey(keyPath, writable: true);
+                    if (key == null) continue;
+
+                    foreach (var valueName in key.GetValueNames())
+                    {
+                        if (!valueName.Equals("MRUList", StringComparison.OrdinalIgnoreCase))
+                        {
+                            key.DeleteValue(valueName, throwOnMissingValue: false);
+                        }
+                    }
+                    key.DeleteValue("MRUList", throwOnMissingValue: false);
+                }
+                catch { }
+            }
+
+            result.Success = true;
+            result.Message = $"Recent documents cleared: {result.FilesDeleted} files, freed {result.BytesFreed} bytes";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> CleanThumbnailCacheAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Thumbnail Cache" };
+
+        try
+        {
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 20,
+                StatusMessage = "Clearing thumbnail cache..."
+            });
+
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var thumbCachePaths = new[]
+            {
+                Path.Combine(localAppData, "Microsoft", "Windows", "Explorer"),
+                Path.Combine(localAppData, "Microsoft", "Windows", "Explorer", "thumbcache_*.db"),
+            };
+
+            // Clean Explorer thumbnail databases
+            var explorerPath = Path.Combine(localAppData, "Microsoft", "Windows", "Explorer");
+            if (Directory.Exists(explorerPath))
+            {
+                foreach (var file in Directory.GetFiles(explorerPath, "thumbcache_*.db"))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var info = new FileInfo(file);
+                        result.BytesFreed += info.Length;
+                        File.Delete(file);
+                        result.FilesDeleted++;
+                    }
+                    catch { }
+                }
+
+                // Also clean iconcache_*.db
+                foreach (var file in Directory.GetFiles(explorerPath, "iconcache_*.db"))
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var info = new FileInfo(file);
+                        result.BytesFreed += info.Length;
+                        File.Delete(file);
+                        result.FilesDeleted++;
+                    }
+                    catch { }
+                }
+            }
+
+            // Clean Windows thumbnail cache via shell command
+            await Task.Run(() =>
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c del /q /f \"%LocalAppData%\\Microsoft\\Windows\\Explorer\\thumbcache_*.db\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var process = Process.Start(psi);
+                process?.WaitForExit(10000);
+            }, ct);
+
+            result.Success = true;
+            result.Message = $"Thumbnail cache cleared: {result.FilesDeleted} files, freed {result.BytesFreed} bytes";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> CleanMemoryDumpsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Memory Dumps" };
+
+        try
+        {
+            var winDir = Path.GetPathRoot(Environment.SystemDirectory)!;
+            var dumpPaths = new List<string>
+            {
+                // Windows minidump folder
+                Path.Combine(winDir, "Windows", "Minidump"),
+                // System crash dumps
+                Path.Combine(winDir, "Windows", "LiveKernelReports"),
+                // WER reports (crash reports)
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Microsoft", "Windows", "WER", "ReportQueue"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Microsoft", "Windows", "WER", "ReportArchive"),
+                // User WER reports
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Microsoft", "Windows", "WER", "ReportQueue"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Microsoft", "Windows", "WER", "ReportArchive"),
+                // CrashDumps folder
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "CrashDumps"),
+                // Windows Error Reporting
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Microsoft", "Windows", "WER", "Temp"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "Microsoft", "Windows", "WER", "Temp"),
+                // Memory dump files in Windows folder
+                winDir + "Windows\\MEMORY.DMP",
+                winDir + "Windows\\Minidump"
+            };
+
+            // Also search for .dmp, .mdmp, .hdmp files in common locations
+            var searchDirs = new[]
+            {
+                Path.Combine(winDir, "Windows", "Minidump"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CrashDumps"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "Microsoft", "Windows", "WER", "ReportQueue")
+            };
+
+            foreach (var dir in searchDirs)
+            {
+                if (!Directory.Exists(dir)) continue;
+                try
+                {
+                    foreach (var ext in new[] { "*.dmp", "*.mdmp", "*.hdmp" })
+                    {
+                        foreach (var file in Directory.GetFiles(dir, ext, SearchOption.AllDirectories))
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            try
+                            {
+                                var info = new FileInfo(file);
+                                result.BytesFreed += info.Length;
+                                File.Delete(file);
+                                result.FilesDeleted++;
+                            }
+                            catch { }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            var totalPaths = dumpPaths.Count;
+            for (int i = 0; i < totalPaths; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new CleanProgress
+                {
+                    PercentComplete = (double)i / totalPaths * 100,
+                    CurrentOperation = $"Cleaning {dumpPaths[i]}",
+                    StatusMessage = "Cleaning memory dumps and crash reports..."
+                });
+
+                var path = dumpPaths[i];
+                if (File.Exists(path))
+                {
+                    try
+                    {
+                        var info = new FileInfo(path);
+                        result.BytesFreed += info.Length;
+                        File.Delete(path);
+                        result.FilesDeleted++;
+                    }
+                    catch { }
+                }
+                else if (Directory.Exists(path))
+                {
+                    var (deleted, freed) = await CleanDirectoryAsync(path, ct);
+                    result.FilesDeleted += deleted;
+                    result.BytesFreed += freed;
+                }
+            }
+
+            result.Success = true;
+            result.Message = $"Memory dumps cleaned: {result.FilesDeleted} files, freed {result.BytesFreed} bytes";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> CleanChkdskFragmentsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Chkdsk Fragments" };
+
+        try
+        {
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 30,
+                StatusMessage = "Removing Chkdsk file fragments..."
+            });
+
+            var winDir = Path.GetPathRoot(Environment.SystemDirectory)!;
+            var fragmentPaths = new[]
+            {
+                Path.Combine(winDir, "System Volume Information", "ChkDsk"),
+                Path.Combine(winDir, "System Volume Information", "FOUND.000"),
+                Path.Combine(winDir, "FOUND.000"),
+                Path.Combine(winDir, "FOUND.001"),
+                Path.Combine(winDir, "FOUND.002")
+            };
+
+            foreach (var path in fragmentPaths)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (Directory.Exists(path))
+                {
+                    var (deleted, freed) = await CleanDirectoryAsync(path, ct);
+                    result.FilesDeleted += deleted;
+                    result.BytesFreed += freed;
+                }
+            }
+
+            // Also search for FOUND.* folders on all drives
+            foreach (var drive in DriveInfo.GetDrives())
+            {
+                ct.ThrowIfCancellationRequested();
+                if (!drive.IsReady) continue;
+                try
+                {
+                    foreach (var foundDir in Directory.GetDirectories(drive.RootDirectory.FullName, "FOUND.*"))
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var (deleted, freed) = await CleanDirectoryAsync(foundDir, ct);
+                        result.FilesDeleted += deleted;
+                        result.BytesFreed += freed;
+                    }
+                }
+                catch { }
+            }
+
+            result.Success = true;
+            result.Message = $"Chkdsk fragments cleaned: {result.FilesDeleted} files, freed {result.BytesFreed} bytes";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> CleanWindowsUpdateCacheAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Windows Update Cache" };
+
+        try
+        {
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 10,
+                StatusMessage = "Cleaning Windows Update cache..."
+            });
+
+            var programData = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData);
+            var wuPaths = new[]
+            {
+                Path.Combine(programData, "Microsoft", "Windows", "DeliveryOptimization", "Cache"),
+                Path.Combine(programData, "Microsoft", "Windows", "DeliveryOptimization", "CacheData"),
+                Path.Combine(programData, "Microsoft", "Windows", "DeliveryOptimization", "CacheMeta"),
+                Path.Combine(programData, "Microsoft", "Windows", "SoftwareDistribution", "Download"),
+                Path.Combine(programData, "Microsoft", "Windows", "SoftwareDistribution", "DataStore"),
+                Path.Combine(programData, "Microsoft", "Windows", "SoftwareDistribution", "DataStore\\Logs")
+            };
+
+            var totalPaths = wuPaths.Length;
+            for (int i = 0; i < totalPaths; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new CleanProgress
+                {
+                    PercentComplete = (double)i / totalPaths * 100,
+                    CurrentOperation = $"Cleaning {wuPaths[i]}",
+                    StatusMessage = "Cleaning Windows Update cache..."
+                });
+
+                if (Directory.Exists(wuPaths[i]))
+                {
+                    var (deleted, freed) = await CleanDirectoryAsync(wuPaths[i], ct);
+                    result.FilesDeleted += deleted;
+                    result.BytesFreed += freed;
+                }
+            }
+
+            result.Success = true;
+            result.Message = $"Windows Update cache cleaned: {result.FilesDeleted} files, freed {result.BytesFreed} bytes";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> CleanCustomFoldersAsync(
+        List<string> folders, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Custom Folders" };
+
+        try
+        {
+            var total = folders.Count;
+            for (int i = 0; i < total; i++)
+            {
+                ct.ThrowIfCancellationRequested();
+                progress?.Report(new CleanProgress
+                {
+                    PercentComplete = (double)i / total * 100,
+                    CurrentOperation = $"Cleaning {folders[i]}",
+                    StatusMessage = "Cleaning custom folders..."
+                });
+
+                if (Directory.Exists(folders[i]))
+                {
+                    var (deleted, freed) = await CleanDirectoryAsync(folders[i], ct);
+                    result.FilesDeleted += deleted;
+                    result.BytesFreed += freed;
+                }
+            }
+
+            result.Success = true;
+            result.Message = $"Custom folders cleaned: {result.FilesDeleted} files, freed {result.BytesFreed} bytes";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<CleanResult> WipeDriveFreeSpaceAsync(
+        string driveLetter, DriveWipeMethod method,
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Drive Wiper" };
+
+        try
+        {
+            var drivePath = driveLetter.Length == 1 ? $"{driveLetter}:\\" : driveLetter;
+            if (!Directory.Exists(drivePath))
+            {
+                result.Success = false;
+                result.Message = $"Drive {drivePath} not found";
+                return result;
+            }
+
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 5,
+                StatusMessage = $"Wiping free space on {drivePath} ({method})..."
+            });
+
+            await Task.Run(() =>
+            {
+                var tempFile = Path.Combine(drivePath, $"~sweep_{Guid.NewGuid():N}.tmp");
+                long blockSize = 64 * 1024 * 1024; // 64MB blocks
+                byte[] buffer = new byte[blockSize];
+                var random = new Random();
+
+                try
+                {
+                    using var fs = new FileStream(tempFile, FileMode.Create, FileAccess.Write,
+                        FileShare.None, (int)blockSize, FileOptions.DeleteOnClose);
+
+                    long totalWritten = 0;
+                    var driveInfo = new DriveInfo(drivePath);
+                    long totalSpace = driveInfo.TotalFreeSpace;
+
+                    int passes = method switch
+                    {
+                        DriveWipeMethod.ZeroFill => 1,
+                        DriveWipeMethod.DoD522022M => 3,
+                        DriveWipeMethod.Gutmann => 35,
+                        _ => 1
+                    };
+
+                    for (int pass = 0; pass < passes; pass++)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        fs.Position = 0;
+                        totalWritten = 0;
+
+                        while (totalWritten < totalSpace)
+                        {
+                            ct.ThrowIfCancellationRequested();
+
+                            if (method == DriveWipeMethod.ZeroFill)
+                            {
+                                Array.Clear(buffer, 0, buffer.Length);
+                            }
+                            else
+                            {
+                                random.NextBytes(buffer);
+                            }
+
+                            int toWrite = (int)Math.Min(buffer.Length, totalSpace - totalWritten);
+                            fs.Write(buffer, 0, toWrite);
+                            totalWritten += toWrite;
+
+                            var percent = (double)totalWritten / totalSpace * 100;
+                            progress?.Report(new CleanProgress
+                            {
+                                PercentComplete = percent,
+                                StatusMessage = $"Pass {pass + 1}/{passes}: {FormatBytes(totalWritten)} / {FormatBytes(totalSpace)}"
+                            });
+                        }
+
+                        fs.Flush();
+                    }
+                }
+                catch (IOException)
+                {
+                    // Expected when disk is full (wiping complete)
+                }
+                finally
+                {
+                    try { File.Delete(tempFile); } catch { }
+                }
+            }, ct);
+
+            result.Success = true;
+            result.Message = $"Drive {drivePath} free space wiped ({method})";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+
+        return result;
+    }
+
+    public async Task<List<DuplicateGroup>> ScanForDuplicatesAsync(
+        string directoryPath, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var groups = new List<DuplicateGroup>();
+        var hashGroups = new Dictionary<string, DuplicateGroup>();
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (!Directory.Exists(directoryPath)) return;
+
+                var files = Directory.EnumerateFiles(directoryPath, "*.*", SearchOption.AllDirectories)
+                    .ToList();
+                var total = files.Count;
+
+                for (int i = 0; i < total; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var file = files[i];
+
+                    progress?.Report(new CleanProgress
+                    {
+                        PercentComplete = (double)i / total * 100,
+                        CurrentOperation = $"Scanning: {Path.GetFileName(file)}",
+                        StatusMessage = "Finding duplicate files..."
+                    });
+
+                    try
+                    {
+                        var info = new FileInfo(file);
+                        if (info.Length == 0) continue;
+
+                        using var sha = System.Security.Cryptography.SHA256.Create();
+                        using var stream = File.OpenRead(file);
+                        var hashBytes = sha.ComputeHash(stream);
+                        var hash = Convert.ToHexString(hashBytes);
+
+                        if (hashGroups.TryGetValue(hash, out var group))
+                        {
+                            group.Items.Add(new DuplicateItem
+                            {
+                                Path = file,
+                                Size = info.Length,
+                                Hash = hash,
+                                GroupId = hash
+                            });
+                            group.Count++;
+                        }
+                        else
+                        {
+                            hashGroups[hash] = new DuplicateGroup
+                            {
+                                Hash = hash,
+                                FileSize = info.Length,
+                                Count = 1,
+                                Items = new List<DuplicateItem>
+                                {
+                                    new()
+                                    {
+                                        Path = file,
+                                        Size = info.Length,
+                                        Hash = hash,
+                                        GroupId = hash
+                                    }
+                                }
+                            };
+                        }
+                    }
+                    catch { }
+                }
+
+                groups.AddRange(hashGroups.Values.Where(g => g.Count > 1));
+                groups.Sort((a, b) => b.FileSize.CompareTo(a.FileSize));
+            }, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { }
+
+        return groups;
+    }
+
+    public async Task<List<DiskSpaceItem>> AnalyzeDiskSpaceAsync(
+        string directoryPath, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var items = new List<DiskSpaceItem>();
+        var extGroups = new Dictionary<string, DiskSpaceItem>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (!Directory.Exists(directoryPath)) return;
+
+                var files = Directory.EnumerateFiles(directoryPath, "*.*", SearchOption.AllDirectories)
+                    .ToList();
+                var total = files.Count;
+
+                for (int i = 0; i < total; i++)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var file = files[i];
+
+                    if (i % 1000 == 0)
+                    {
+                        progress?.Report(new CleanProgress
+                        {
+                            PercentComplete = (double)i / total * 100,
+                            CurrentOperation = $"Analyzing: {Path.GetFileName(file)}",
+                            StatusMessage = "Analyzing disk space usage..."
+                        });
+                    }
+
+                    try
+                    {
+                        var info = new FileInfo(file);
+                        var ext = string.IsNullOrEmpty(info.Extension) ? "(no ext)" : info.Extension.ToLower();
+
+                        if (extGroups.TryGetValue(ext, out var group))
+                        {
+                            group.TotalSize += info.Length;
+                            group.FileCount++;
+                        }
+                        else
+                        {
+                            extGroups[ext] = new DiskSpaceItem
+                            {
+                                Extension = ext,
+                                TotalSize = info.Length,
+                                FileCount = 1
+                            };
+                        }
+                    }
+                    catch { }
+                }
+
+                items.AddRange(extGroups.Values);
+                items.Sort((a, b) => b.TotalSize.CompareTo(a.TotalSize));
+            }, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch { }
+
+        return items;
+    }
+
+    // --- P/Invoke ---
 
     [DllImport("Shell32.dll", CharSet = CharSet.Unicode)]
     private static extern uint SHEmptyRecycleBin(IntPtr hwnd, string? pszRootPath, uint dwFlags);
+
+    [DllImport("User32.dll")]
+    private static extern bool OpenClipboard(IntPtr hWndNewOwner);
+
+    [DllImport("User32.dll")]
+    private static extern bool EmptyClipboard();
+
+    [DllImport("User32.dll")]
+    private static extern bool CloseClipboard();
 
     [Flags]
     private enum RecycleBinFlags : uint
@@ -1036,4 +1891,12 @@ public class WindowsCleaner : ISystemCleaner
         SHRB_NOPROGRESS = 0x0002,
         SHRB_NO_SOUND = 0x0004
     }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => string.Format(CultureInfo.InvariantCulture, "{0:F1} KB", bytes / 1024.0),
+        < 1024 * 1024 * 1024 => string.Format(CultureInfo.InvariantCulture, "{0:F1} MB", bytes / (1024.0 * 1024.0)),
+        _ => string.Format(CultureInfo.InvariantCulture, "{0:F2} GB", bytes / (1024.0 * 1024.0 * 1024.0))
+    };
 }

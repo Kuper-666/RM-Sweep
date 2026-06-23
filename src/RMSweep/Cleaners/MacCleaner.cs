@@ -807,4 +807,142 @@ public class MacCleaner : ISystemCleaner
 
         return (filesDeleted, bytesFreed);
     }
+
+    private static string FormatBytes(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        < 1024 * 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):F1} MB",
+        _ => $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB"
+    };
+
+    public Task<CleanResult> CleanDnsCacheAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "DNS Cache",
+            Success = true,
+            Message = "DNS cache flush: use 'sudo dscacheutil -flushcache' on macOS"
+        });
+    }
+
+    public Task<CleanResult> CleanClipboardAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "Clipboard",
+            Success = true,
+            Message = "Clipboard clear: use 'pbcopy < /dev/null' on macOS"
+        });
+    }
+
+    public async Task<CleanResult> CleanRecentDocumentsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "Recent Documents" };
+
+        try
+        {
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            var recentPath = Path.Combine(home, "Library", "Recent");
+            if (Directory.Exists(recentPath))
+            {
+                var (deleted, freed) = await CleanDirectoryAsync(recentPath, ct);
+                result.FilesDeleted = deleted;
+                result.BytesFreed = freed;
+            }
+
+            result.Success = true;
+            result.Message = $"Recent documents cleared: {result.FilesDeleted} files";
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+        }
+
+        return result;
+    }
+
+    public Task<CleanResult> CleanThumbnailCacheAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "Thumbnail Cache",
+            Success = true,
+            Message = "Thumbnail cache: macOS manages this automatically"
+        });
+    }
+
+    public Task<CleanResult> CleanMemoryDumpsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "Memory Dumps",
+            Success = true,
+            Message = "Memory dumps: macOS crash logs are in ~/Library/Logs/DiagnosticReports"
+        });
+    }
+
+    public Task<CleanResult> CleanChkdskFragmentsAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "Chkdsk Fragments",
+            Success = true,
+            Message = "Chkdsk fragments: not applicable on macOS"
+        });
+    }
+
+    public Task<CleanResult> CleanWindowsUpdateCacheAsync(
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "Windows Update Cache",
+            Success = true,
+            Message = "Windows Update cache: not applicable on macOS"
+        });
+    }
+
+    public Task<CleanResult> CleanCustomFoldersAsync(
+        List<string> folders, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "Custom Folders",
+            Success = true,
+            Message = "Custom folders cleaning not yet implemented for macOS"
+        });
+    }
+
+    public Task<CleanResult> WipeDriveFreeSpaceAsync(
+        string driveLetter, DriveWipeMethod method,
+        IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new CleanResult
+        {
+            OperationName = "Drive Wiper",
+            Success = true,
+            Message = "Drive wiper: use 'diskutil secureErase' on macOS"
+        });
+    }
+
+    public Task<List<DuplicateGroup>> ScanForDuplicatesAsync(
+        string directoryPath, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new List<DuplicateGroup>());
+    }
+
+    public Task<List<DiskSpaceItem>> AnalyzeDiskSpaceAsync(
+        string directoryPath, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        return Task.FromResult(new List<DiskSpaceItem>());
+    }
 }

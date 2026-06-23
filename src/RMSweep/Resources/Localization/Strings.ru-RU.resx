@@ -177,4 +177,76 @@
   <data name="AppSize" xml:space="preserve">
     <value>Размер</value>
   </data>
+  <data name="CleanDnsCache" xml:space="preserve">
+    <value>Кэш DNS</value>
+  </data>
+  <data name="CleanClipboard" xml:space="preserve">
+    <value>Буфер обмена</value>
+  </data>
+  <data name="CleanRecentDocuments" xml:space="preserve">
+    <value>Недавние документы</value>
+  </data>
+  <data name="CleanThumbnailCache" xml:space="preserve">
+    <value>Кэш эскизов</value>
+  </data>
+  <data name="CleanMemoryDumps" xml:space="preserve">
+    <value>Дампы памяти и отчёты об ошибках</value>
+  </data>
+  <data name="CleanChkdskFragments" xml:space="preserve">
+    <value>Фрагменты Chkdsk</value>
+  </data>
+  <data name="CleanWindowsUpdateCache" xml:space="preserve">
+    <value>Кэш обновлений Windows</value>
+  </data>
+  <data name="CustomFolders" xml:space="preserve">
+    <value>Пользовательские папки</value>
+  </data>
+  <data name="DiskAnalyzer" xml:space="preserve">
+    <value>Анализ дискового пространства</value>
+  </data>
+  <data name="DuplicateFinder" xml:space="preserve">
+    <value>Поиск дубликатов файлов</value>
+  </data>
+  <data name="DriveWiper" xml:space="preserve">
+    <value>Стирание диска (безопасное удаление)</value>
+  </data>
+  <data name="AnalyzeButton" xml:space="preserve">
+    <value>Анализировать диск</value>
+  </data>
+  <data name="ScanDuplicatesButton" xml:space="preserve">
+    <value>Найти дубликаты</value>
+  </data>
+  <data name="WipeButton" xml:space="preserve">
+    <value>Стереть свободное место</value>
+  </data>
+  <data name="DriveLabel" xml:space="preserve">
+    <value>Диск:</value>
+  </data>
+  <data name="WipeMethodLabel" xml:space="preserve">
+    <value>Метод:</value>
+  </data>
+  <data name="DirectoryLabel" xml:space="preserve">
+    <value>Каталог:</value>
+  </data>
+  <data name="ExcludePathsLabel" xml:space="preserve">
+    <value>Исключения</value>
+  </data>
+  <data name="IncludeFoldersLabel" xml:space="preserve">
+    <value>Дополнительные папки для очистки</value>
+  </data>
+  <data name="AddExcludeButton" xml:space="preserve">
+    <value>Добавить</value>
+  </data>
+  <data name="AddIncludeButton" xml:space="preserve">
+    <value>Добавить</value>
+  </data>
+  <data name="SettingsHeader" xml:space="preserve">
+    <value>Настройки</value>
+  </data>
+  <data name="AnalyzingDisk" xml:space="preserve">
+    <value>Анализ использования дискового пространства...</value>
+  </data>
+  <data name="ScanningDuplicates" xml:space="preserve">
+    <value>Поиск дубликатов файлов...</value>
+  </data>
 </root>

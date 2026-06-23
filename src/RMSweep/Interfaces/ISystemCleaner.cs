@@ -39,4 +39,37 @@ public interface ISystemCleaner
 
     /// <summary>Check if running with admin privileges.</summary>
     bool IsRunningAsAdmin();
+
+    /// <summary>Flush DNS cache.</summary>
+    Task<CleanResult> CleanDnsCacheAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Clear clipboard contents.</summary>
+    Task<CleanResult> CleanClipboardAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Clear recent documents history.</summary>
+    Task<CleanResult> CleanRecentDocumentsAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Clear thumbnail/icon cache.</summary>
+    Task<CleanResult> CleanThumbnailCacheAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Delete memory dumps and crash reports.</summary>
+    Task<CleanResult> CleanMemoryDumpsAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Delete Chkdsk file fragments.</summary>
+    Task<CleanResult> CleanChkdskFragmentsAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Clean Windows Update download cache.</summary>
+    Task<CleanResult> CleanWindowsUpdateCacheAsync(IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Securely wipe free space on a drive.</summary>
+    Task<CleanResult> WipeDriveFreeSpaceAsync(string driveLetter, DriveWipeMethod method, IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Scan a directory for duplicate files.</summary>
+    Task<List<DuplicateGroup>> ScanForDuplicatesAsync(string directoryPath, IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Analyze disk space usage by file extension.</summary>
+    Task<List<DiskSpaceItem>> AnalyzeDiskSpaceAsync(string directoryPath, IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Clean with custom paths (included folders from settings).</summary>
+    Task<CleanResult> CleanCustomFoldersAsync(List<string> folders, IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
 }

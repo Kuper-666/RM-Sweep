@@ -177,4 +177,76 @@
   <data name="AppSize" xml:space="preserve">
     <value>Größe</value>
   </data>
+  <data name="CleanDnsCache" xml:space="preserve">
+    <value>DNS-Cache</value>
+  </data>
+  <data name="CleanClipboard" xml:space="preserve">
+    <value>Zwischenablage</value>
+  </data>
+  <data name="CleanRecentDocuments" xml:space="preserve">
+    <value>Zuletzt verwendete Dokumente</value>
+  </data>
+  <data name="CleanThumbnailCache" xml:space="preserve">
+    <value>Vorschaubild-Cache</value>
+  </data>
+  <data name="CleanMemoryDumps" xml:space="preserve">
+    <value>Speicherabbilder &amp; Absturzberichte</value>
+  </data>
+  <data name="CleanChkdskFragments" xml:space="preserve">
+    <value>Chkdsk-Fragmente</value>
+  </data>
+  <data name="CleanWindowsUpdateCache" xml:space="preserve">
+    <value>Windows Update-Cache</value>
+  </data>
+  <data name="CustomFolders" xml:space="preserve">
+    <value>Benutzerdefinierte Ordner</value>
+  </data>
+  <data name="DiskAnalyzer" xml:space="preserve">
+    <value>Festplattenanalyse</value>
+  </data>
+  <data name="DuplicateFinder" xml:space="preserve">
+    <value>Doppelte Dateien finden</value>
+  </data>
+  <data name="DriveWiper" xml:space="preserve">
+    <value>Laufwerkswisch (Sicheres Löschen)</value>
+  </data>
+  <data name="AnalyzeButton" xml:space="preserve">
+    <value>Festplatte analysieren</value>
+  </data>
+  <data name="ScanDuplicatesButton" xml:space="preserve">
+    <value>Doppelte Dateien finden</value>
+  </data>
+  <data name="WipeButton" xml:space="preserve">
+    <value>Freien Speicher löschen</value>
+  </data>
+  <data name="DriveLabel" xml:space="preserve">
+    <value>Laufwerk:</value>
+  </data>
+  <data name="WipeMethodLabel" xml:space="preserve">
+    <value>Methode:</value>
+  </data>
+  <data name="DirectoryLabel" xml:space="preserve">
+    <value>Verzeichnis:</value>
+  </data>
+  <data name="ExcludePathsLabel" xml:space="preserve">
+    <value>Ausschlüsse</value>
+  </data>
+  <data name="IncludeFoldersLabel" xml:space="preserve">
+    <value>Zusätzliche Ordner zum Bereinigen</value>
+  </data>
+  <data name="AddExcludeButton" xml:space="preserve">
+    <value>Hinzufügen</value>
+  </data>
+  <data name="AddIncludeButton" xml:space="preserve">
+    <value>Hinzufügen</value>
+  </data>
+  <data name="SettingsHeader" xml:space="preserve">
+    <value>Einstellungen</value>
+  </data>
+  <data name="AnalyzingDisk" xml:space="preserve">
+    <value>Festplattennutzung wird analysiert...</value>
+  </data>
+  <data name="ScanningDuplicates" xml:space="preserve">
+    <value>Doppelte Dateien werden gesucht...</value>
+  </data>
 </root>
