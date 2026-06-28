@@ -72,4 +72,7 @@ public interface ISystemCleaner
 
     /// <summary>Clean with custom paths (included folders from settings).</summary>
     Task<CleanResult> CleanCustomFoldersAsync(List<string> folders, IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
+
+    /// <summary>Securely shred a file or directory.</summary>
+    Task<CleanResult> ShredItemAsync(string path, DriveWipeMethod method, IProgress<CleanProgress>? progress = null, CancellationToken ct = default);
 }

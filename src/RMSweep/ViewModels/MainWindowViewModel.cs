@@ -99,6 +99,9 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
     [ObservableProperty] private string _driveLabel = string.Empty;
     [ObservableProperty] private string _wipeMethodLabel = string.Empty;
     [ObservableProperty] private string _directoryLabel = string.Empty;
+    [ObservableProperty] private string _fileShredderText = "File Shredder";
+    [ObservableProperty] private string _shredItemPath = string.Empty;
+    [ObservableProperty] private string _shredButtonText = "Shred File/Folder";
 
     // Settings tab strings
     [ObservableProperty] private string _excludePathsLabel = string.Empty;
@@ -238,6 +241,8 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
         DriveLabel = LocalizationService.GetString("DriveLabel");
         WipeMethodLabel = LocalizationService.GetString("WipeMethodLabel");
         DirectoryLabel = LocalizationService.GetString("DirectoryLabel");
+        FileShredderText = LocalizationService.GetString("FileShredder");
+        ShredButtonText = LocalizationService.GetString("ShredButton");
         ExcludePathsLabel = LocalizationService.GetString("ExcludePathsLabel");
         IncludeFoldersLabel = LocalizationService.GetString("IncludeFoldersLabel");
         AddExcludeButton = LocalizationService.GetString("AddExcludeButton");
@@ -684,6 +689,53 @@ public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
             IsCleaning = false;
             _cts?.Dispose();
             _cts = null;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShredItemAsync()
+    {
+        if (IsCleaning) return;
+        var path = ShredItemPath;
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        IsCleaning = true;
+        _cts = new CancellationTokenSource();
+        StatusText = $"Shredding {path}...";
+
+        try
+        {
+            var method = SelectedWipeMethod switch
+            {
+                1 => DriveWipeMethod.DoD522022M,
+                2 => DriveWipeMethod.Gutmann,
+                _ => DriveWipeMethod.ZeroFill
+            };
+
+            var progress = new Progress<CleanProgress>(p =>
+            {
+                ProgressValue = p.PercentComplete;
+                StatusText = p.StatusMessage;
+            });
+
+            var result = await _cleaner.ShredItemAsync(path, method, progress, _cts.Token);
+            _logService.AddResult("File Shredder", result);
+            StatusText = result.Success ? "Shredding completed successfully" : $"Shredding failed: {result.Message}";
+        }
+        catch (OperationCanceledException)
+        {
+            _logService.AddWarning("File Shredder", LocalizationService.GetString("OperationCancelled"));
+        }
+        catch (Exception ex)
+        {
+            _logService.AddError("File Shredder", ex.Message);
+        }
+        finally
+        {
+            IsCleaning = false;
+            _cts?.Dispose();
+            _cts = null;
+            ShredItemPath = string.Empty;
         }
     }
 

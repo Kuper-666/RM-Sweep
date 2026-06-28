@@ -924,8 +924,83 @@ public class WindowsCleaner : ISystemCleaner
         return false;
     }
 
+    private void CleanMuiCache(CancellationToken ct)
+    {
+        var muiCachePaths = new[]
+        {
+            @"Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache"
+        };
+
+        foreach (var subKeyPath in muiCachePaths)
+        {
+            ct.ThrowIfCancellationRequested();
+            RegistryKey? key = null;
+            try
+            {
+                key = Registry.CurrentUser.OpenSubKey(subKeyPath, writable: true);
+            }
+            catch { continue; }
+
+            if (key == null) continue;
+
+            try
+            {
+                foreach (var valueName in key.GetValueNames())
+                {
+                    if (valueName.Equals("LanguageList", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var pathPart = valueName;
+                    if (pathPart.EndsWith(".FriendlyAppName", StringComparison.OrdinalIgnoreCase))
+                    {
+                        pathPart = pathPart.Substring(0, pathPart.Length - ".FriendlyAppName".Length);
+                    }
+                    else if (pathPart.EndsWith(".ApplicationCompany", StringComparison.OrdinalIgnoreCase))
+                    {
+                        pathPart = pathPart.Substring(0, pathPart.Length - ".ApplicationCompany".Length);
+                    }
+
+                    if (!string.IsNullOrEmpty(pathPart) && !File.Exists(pathPart) && !Directory.Exists(pathPart))
+                    {
+                        key.DeleteValue(valueName, throwOnMissingValue: false);
+                    }
+                }
+            }
+            catch { }
+            finally { key.Dispose(); }
+        }
+    }
+
+    private void CleanSharedDlls(CancellationToken ct)
+    {
+        var sharedDllsPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\SharedDlls";
+        ct.ThrowIfCancellationRequested();
+        RegistryKey? key = null;
+        try
+        {
+            key = Registry.LocalMachine.OpenSubKey(sharedDllsPath, writable: true);
+        }
+        catch { return; }
+
+        if (key == null) return;
+
+        try
+        {
+            foreach (var valueName in key.GetValueNames())
+            {
+                if (!string.IsNullOrEmpty(valueName) && !File.Exists(valueName) && !Directory.Exists(valueName))
+                {
+                    key.DeleteValue(valueName, throwOnMissingValue: false);
+                }
+            }
+        }
+        catch { }
+        finally { key.Dispose(); }
+    }
+
     private void CleanRegistryKeys(CancellationToken ct)
     {
+        CleanMuiCache(ct);
+        CleanSharedDlls(ct);
         var runKeys = new[]
         {
             (@"SOFTWARE\Microsoft\Windows\CurrentVersion\Run", Registry.LocalMachine),
@@ -1899,4 +1974,96 @@ public class WindowsCleaner : ISystemCleaner
         < 1024 * 1024 * 1024 => string.Format(CultureInfo.InvariantCulture, "{0:F1} MB", bytes / (1024.0 * 1024.0)),
         _ => string.Format(CultureInfo.InvariantCulture, "{0:F2} GB", bytes / (1024.0 * 1024.0 * 1024.0))
     };
+
+    public async Task<CleanResult> ShredItemAsync(string path, DriveWipeMethod method, IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
+    {
+        var result = new CleanResult { OperationName = "File Shredder" };
+        try
+        {
+            if (File.Exists(path))
+            {
+                await ShredFileInternalAsync(path, method, progress, ct);
+                result.FilesDeleted = 1;
+            }
+            else if (Directory.Exists(path))
+            {
+                var dir = new DirectoryInfo(path);
+                var files = dir.GetFiles("*", SearchOption.AllDirectories);
+                int total = files.Length;
+                int current = 0;
+                foreach (var file in files)
+                {
+                    current++;
+                    progress?.Report(new CleanProgress
+                    {
+                        PercentComplete = (double)current / total * 100,
+                        StatusMessage = $"Shredding {file.Name}"
+                    });
+                    await ShredFileInternalAsync(file.FullName, method, null, ct);
+                    result.FilesDeleted++;
+                }
+                Directory.Delete(path, true);
+            }
+            else
+            {
+                throw new FileNotFoundException("Path not found");
+            }
+
+            result.Success = true;
+            result.Message = $"Shredding complete: {result.FilesDeleted} files wiped";
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+            result.Errors.Add(ex.ToString());
+        }
+        return result;
+    }
+
+    private async Task ShredFileInternalAsync(string filePath, DriveWipeMethod method, IProgress<CleanProgress>? progress, CancellationToken ct)
+    {
+        int passes = method switch
+        {
+            DriveWipeMethod.ZeroFill => 1,
+            DriveWipeMethod.DoD522022M => 3,
+            DriveWipeMethod.Gutmann => 35,
+            _ => 1
+        };
+
+        var fileInfo = new FileInfo(filePath);
+        long size = fileInfo.Length;
+        int bufferSize = 1024 * 1024; // 1MB
+        byte[] buffer = new byte[bufferSize];
+
+        for (int pass = 0; pass < passes; pass++)
+        {
+            ct.ThrowIfCancellationRequested();
+            using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Write, FileShare.None, bufferSize, FileOptions.Asynchronous);
+            long bytesWritten = 0;
+
+            byte fillByte = (byte)(pass % 255); // simple pattern for DoD/Gutmann simulation
+            if (method == DriveWipeMethod.ZeroFill) fillByte = 0;
+            Array.Fill(buffer, fillByte);
+
+            while (bytesWritten < size)
+            {
+                ct.ThrowIfCancellationRequested();
+                int toWrite = (int)Math.Min(bufferSize, size - bytesWritten);
+                await fs.WriteAsync(buffer, 0, toWrite, ct);
+                bytesWritten += toWrite;
+            }
+            await fs.FlushAsync(ct);
+        }
+
+        // Rename file to obscure name before deletion
+        var dir = Path.GetDirectoryName(filePath);
+        var newPath = Path.Combine(dir ?? "", Guid.NewGuid().ToString() + ".tmp");
+        File.Move(filePath, newPath);
+        File.Delete(newPath);
+    }
 }
