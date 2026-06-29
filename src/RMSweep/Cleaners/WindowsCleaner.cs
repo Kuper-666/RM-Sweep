@@ -341,7 +341,7 @@ public class WindowsCleaner : ISystemCleaner
                 // SHFileOperation is deprecated; use SHEmptyRecycleBin via P/Invoke
                 uint hr = SHEmptyRecycleBin(IntPtr.Zero, null,
                     (uint)(RecycleBinFlags.SHRB_NOCONFIRMATION | RecycleBinFlags.SHRB_NOPROGRESS));
-                if (hr != 0)
+                if (hr != 0 && hr != 0x8000FFFF)
                     throw new InvalidOperationException($"SHEmptyRecycleBin failed with HRESULT 0x{hr:X8}");
             }, ct);
 
