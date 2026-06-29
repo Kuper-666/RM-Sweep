@@ -87,6 +87,9 @@
   <data name="ConfirmButton" xml:space="preserve">
     <value>Confirm</value>
   </data>
+  <data name="CancelConfirmButton" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
   <data name="AdminWarning" xml:space="preserve">
     <value>This application requires administrator privileges for full functionality.</value>
   </data>

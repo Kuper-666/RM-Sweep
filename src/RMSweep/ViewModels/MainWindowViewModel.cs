@@ -84,8 +84,13 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private string _confirmTitle = string.Empty;
     [ObservableProperty] private string _confirmMessage = string.Empty;
     [ObservableProperty] private string _confirmButton = string.Empty;
+    [ObservableProperty] private string _cancelConfirmButton = string.Empty;
     [ObservableProperty] private string _adminWarningText = string.Empty;
     [ObservableProperty] private string _noAdminWarning = string.Empty;
+
+    [ObservableProperty] private bool _showConfirmation;
+    [ObservableProperty] private bool _isNotAdmin;
+    [ObservableProperty] private string _cleaningSummary = string.Empty;
     [ObservableProperty] private string _scanButtonText = string.Empty;
     [ObservableProperty] private string _installedAppsHeaderText = string.Empty;
 
@@ -122,11 +127,21 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<string> WipeMethods { get; } = new();
 
     public bool IsNotCleaning => !IsCleaning;
+    public bool CanShowCleanButton => !IsCleaning && !ShowConfirmation;
 
     partial void OnIsCleaningChanged(bool value)
     {
         OnPropertyChanged(nameof(IsNotCleaning));
+        OnPropertyChanged(nameof(CanShowCleanButton));
     }
+
+    partial void OnShowConfirmationChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsNotConfirming));
+        OnPropertyChanged(nameof(CanShowCleanButton));
+    }
+
+    public bool IsNotConfirming => !ShowConfirmation;
 
     public string PlatformInfo => _cleaner.PlatformName;
 
@@ -137,6 +152,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         _cleaner = CleanerFactory.Create();
         _logService = new LogService();
+        _isNotAdmin = !_cleaner.IsRunningAsAdmin();
 
         _logService.EntryAdded += entry =>
         {
@@ -228,6 +244,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ConfirmTitle = LocalizationService.GetString("ConfirmTitle");
         ConfirmMessage = LocalizationService.GetString("ConfirmMessage");
         ConfirmButton = LocalizationService.GetString("ConfirmButton");
+        CancelConfirmButton = LocalizationService.GetString("CancelConfirmButton");
         AdminWarningText = LocalizationService.GetString("AdminWarning");
         NoAdminWarning = LocalizationService.GetString("NoAdminWarning");
         ScanButtonText = LocalizationService.GetString("ScanButton");
@@ -301,9 +318,25 @@ public partial class MainWindowViewModel : ViewModelBase
         CleanWindowsUpdateCache || IncludeFolders.Count > 0;
 
     [RelayCommand]
+    private void ShowCleaningConfirmation()
+    {
+        if (IsCleaning || !HasSelectedOperations) return;
+        ShowConfirmation = true;
+    }
+
+    [RelayCommand]
+    private void CancelCleaningConfirmation()
+    {
+        ShowConfirmation = false;
+    }
+
+    [RelayCommand]
     private async Task StartCleaningAsync()
     {
         if (IsCleaning || !HasSelectedOperations) return;
+
+        ShowConfirmation = false;
+        CleaningSummary = string.Empty;
 
         if (!_cleaner.IsRunningAsAdmin())
         {
@@ -314,6 +347,9 @@ public partial class MainWindowViewModel : ViewModelBase
         _cts = new CancellationTokenSource();
         LogEntries.Clear();
         ProgressValue = 0;
+
+        var successCount = 0;
+        var failCount = 0;
 
         try
         {
@@ -357,10 +393,17 @@ public partial class MainWindowViewModel : ViewModelBase
                 }
 
                 _logService.AddResult(op.Key, result);
+                if (result.Success) successCount++;
+                else failCount++;
                 completedOps++;
                 ProgressValue = (double)completedOps / totalOps * 100;
             }
 
+            var summary = failCount == 0
+                ? $"Completed: {successCount} succeeded"
+                : $"Completed: {successCount} succeeded, {failCount} failed";
+            _logService.AddWarning("Summary", summary);
+            CleaningSummary = summary;
             StatusText = LocalizationService.GetString("CleaningComplete");
         }
         finally

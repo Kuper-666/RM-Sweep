@@ -87,6 +87,9 @@
   <data name="ConfirmButton" xml:space="preserve">
     <value>Bestätigen</value>
   </data>
+  <data name="CancelConfirmButton" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
   <data name="AdminWarning" xml:space="preserve">
     <value>Für die volle Funktionalität sind Administratorrechte erforderlich.</value>
   </data>
