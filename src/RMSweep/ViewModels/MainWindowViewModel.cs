@@ -11,7 +11,7 @@ using RMSweep.Services;
 
 namespace RMSweep.ViewModels;
 
-public partial class MainWindowViewModel : ViewModelBase, INotifyPropertyChanged
+public partial class MainWindowViewModel : ViewModelBase
 {
     private readonly ISystemCleaner _cleaner;
     private readonly LogService _logService;

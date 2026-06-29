@@ -67,9 +67,6 @@ public class MacCleaner : ISystemCleaner
                 Path.Combine(home, "Library", "HTTPStorages"),
                 // Cookies
                 Path.Combine(home, "Library", "Cookies"),
-                // System caches
-                "/Library/Caches",
-                "/Library/Logs"
             };
 
             // Browser caches on Mac

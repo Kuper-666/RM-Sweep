@@ -341,6 +341,8 @@ public class WindowsCleaner : ISystemCleaner
                 // SHFileOperation is deprecated; use SHEmptyRecycleBin via P/Invoke
                 uint hr = SHEmptyRecycleBin(IntPtr.Zero, null,
                     (uint)(RecycleBinFlags.SHRB_NOCONFIRMATION | RecycleBinFlags.SHRB_NOPROGRESS));
+                if (hr != 0)
+                    throw new InvalidOperationException($"SHEmptyRecycleBin failed with HRESULT 0x{hr:X8}");
             }, ct);
 
             result.Success = true;
@@ -447,7 +449,8 @@ public class WindowsCleaner : ISystemCleaner
 
                     if (uninstallCmd.StartsWith("MsiExec.exe", StringComparison.OrdinalIgnoreCase))
                     {
-                        var msiArgs = uninstallCmd.Replace("MsiExec.exe", "").Trim();
+                        var msiArgs = uninstallCmd
+                            .Replace("MsiExec.exe", "", StringComparison.OrdinalIgnoreCase).Trim();
                         if (!msiArgs.Contains("/qn"))
                             msiArgs += " /qn";
                         var psi = new ProcessStartInfo { FileName = "msiexec.exe", Arguments = msiArgs, UseShellExecute = true, Verb = "runas" };
@@ -1053,14 +1056,21 @@ public class WindowsCleaner : ISystemCleaner
 
     private void CleanAutostartKeys(CancellationToken ct)
     {
-        // Clean startup folder
+        // Clean startup folder - only remove suspicious executable/script files
         var startupPath = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
         if (Directory.Exists(startupPath))
         {
+            var suspiciousExtensions = new[] { ".exe", ".bat", ".cmd", ".vbs", ".ps1", ".js", ".wsf", ".com" };
             foreach (var file in Directory.GetFiles(startupPath))
             {
                 ct.ThrowIfCancellationRequested();
-                try { File.Delete(file); } catch { }
+                try
+                {
+                    var ext = Path.GetExtension(file);
+                    if (suspiciousExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
+                        File.Delete(file);
+                }
+                catch { }
             }
         }
 
@@ -1110,6 +1120,8 @@ public class WindowsCleaner : ISystemCleaner
         if (process != null)
         {
             process.WaitForExit(120000); // 2 min timeout
+            if (process.ExitCode != 0)
+                throw new InvalidOperationException($"PowerShell restore point creation failed with exit code {process.ExitCode}");
         }
     }
 
@@ -1450,8 +1462,8 @@ public class WindowsCleaner : ISystemCleaner
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "Microsoft", "Windows", "WER", "Temp"),
                 // Memory dump files in Windows folder
-                winDir + "Windows\\MEMORY.DMP",
-                winDir + "Windows\\Minidump"
+                Path.Combine(winDir, "Windows", "MEMORY.DMP"),
+                Path.Combine(winDir, "Windows", "Minidump")
             };
 
             // Also search for .dmp, .mdmp, .hdmp files in common locations
