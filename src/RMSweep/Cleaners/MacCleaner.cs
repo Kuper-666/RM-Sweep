@@ -65,8 +65,6 @@ public class MacCleaner : ISystemCleaner
                 Path.Combine(home, "Library", "WebKit"),
                 // HTTP storage
                 Path.Combine(home, "Library", "HTTPStorages"),
-                // Cookies
-                Path.Combine(home, "Library", "Cookies"),
             };
 
             // Browser caches on Mac
@@ -88,7 +86,8 @@ public class MacCleaner : ISystemCleaner
             // Steam cache on Mac
             var steamPaths = new[]
             {
-                Path.Combine(home, "Library", "Application Support", "Steam"),
+                Path.Combine(home, "Library", "Application Support", "Steam", "appcache"),
+                Path.Combine(home, "Library", "Application Support", "Steam", "config", "htmlcache"),
                 Path.Combine(home, "Library", "Caches", "Steam"),
             };
             foreach (var sp in steamPaths)
@@ -183,7 +182,7 @@ public class MacCleaner : ISystemCleaner
                 ["Chrome Canary"] = Path.Combine(libraryCaches, "com.google.Chrome.Canary"),
                 ["Edge"] = Path.Combine(libraryCaches, "com.microsoft.edgemac"),
                 ["Firefox"] = Path.Combine(libraryCaches, "Firefox"),
-                ["Safari"] = Path.Combine(home, "Library", "Safari"),
+                ["Safari"] = Path.Combine(libraryCaches, "com.apple.Safari"),
                 ["Opera"] = Path.Combine(libraryCaches, "com.operasoftware.Opera"),
             };
 
@@ -328,11 +327,24 @@ public class MacCleaner : ISystemCleaner
                 StatusMessage = LocalizationService.GetString("CleaningLoginItems")
             });
 
-            // List and report login items (non-destructive by default)
+            // List and attempt to remove login items
             var items = await RunCommandAsync("osascript", "-e 'tell application \"System Events\" to get the name of every login item'", ct);
 
+            if (!string.IsNullOrWhiteSpace(items))
+            {
+                var itemNames = items.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                foreach (var item in itemNames)
+                {
+                    try
+                    {
+                        await RunCommandAsync("osascript", $"-e 'tell application \"System Events\" to delete login item \"{item}\"'", ct);
+                    }
+                    catch { }
+                }
+            }
+
             result.Success = true;
-            result.Message = $"Found login items: {items}";
+            result.Message = string.IsNullOrWhiteSpace(items) ? "No login items found" : $"Removed login items: {items}";
         }
         catch (OperationCanceledException)
         {
@@ -722,7 +734,8 @@ public class MacCleaner : ISystemCleaner
                 CreateNoWindow = true
             };
 
-            using var process = Process.Start(psi)!;
+            using var process = Process.Start(psi);
+            if (process == null) return true;
             var output = await process.StandardOutput.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
 
@@ -746,7 +759,8 @@ public class MacCleaner : ISystemCleaner
             CreateNoWindow = true
         };
 
-        using var process = Process.Start(psi)!;
+        using var process = Process.Start(psi);
+        if (process == null) return string.Empty;
         var output = await process.StandardOutput.ReadToEndAsync(ct);
         await process.WaitForExitAsync(ct);
         return output.Trim();
@@ -813,26 +827,59 @@ public class MacCleaner : ISystemCleaner
         _ => $"{bytes / (1024.0 * 1024.0 * 1024.0):F2} GB"
     };
 
-    public Task<CleanResult> CleanDnsCacheAsync(
+    public async Task<CleanResult> CleanDnsCacheAsync(
         IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
     {
-        return Task.FromResult(new CleanResult
+        var result = new CleanResult { OperationName = "DNS Cache" };
+
+        try
         {
-            OperationName = "DNS Cache",
-            Success = true,
-            Message = "DNS cache flush: use 'sudo dscacheutil -flushcache' on macOS"
-        });
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 50,
+                StatusMessage = "Flushing DNS cache..."
+            });
+
+            await RunCommandAsync("sudo", "dscacheutil -flushcache", ct);
+            await RunCommandAsync("sudo", "killall -HUP mDNSResponder", ct);
+
+            result.Success = true;
+            result.Message = "DNS cache flushed successfully";
+        }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+        }
+
+        return result;
     }
 
-    public Task<CleanResult> CleanClipboardAsync(
+    public async Task<CleanResult> CleanClipboardAsync(
         IProgress<CleanProgress>? progress = null, CancellationToken ct = default)
     {
-        return Task.FromResult(new CleanResult
+        var result = new CleanResult { OperationName = "Clipboard" };
+
+        try
         {
-            OperationName = "Clipboard",
-            Success = true,
-            Message = "Clipboard clear: use 'pbcopy < /dev/null' on macOS"
-        });
+            progress?.Report(new CleanProgress
+            {
+                PercentComplete = 50,
+                StatusMessage = "Clearing clipboard..."
+            });
+
+            await RunCommandAsync("bash", "-c \"echo -n | pbcopy\"", ct);
+
+            result.Success = true;
+            result.Message = "Clipboard cleared successfully";
+        }
+        catch (Exception ex)
+        {
+            result.Success = false;
+            result.Message = ex.Message;
+        }
+
+        return result;
     }
 
     public async Task<CleanResult> CleanRecentDocumentsAsync(

@@ -9,7 +9,7 @@ namespace RMSweep.Services;
 public static class LocalizationService
 {
     private static ResourceManager? _resourceManager;
-    private static CultureInfo _currentCulture = CultureInfo.CurrentUICulture;
+    private static volatile CultureInfo _currentCulture = CultureInfo.CurrentUICulture;
 
     public static event Action? LanguageChanged;
 

@@ -211,15 +211,26 @@ public class WindowsCleaner : ISystemCleaner
         try
         {
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
 
             var browserPaths = new Dictionary<string, string>
             {
                 ["Chrome"] = Path.Combine(localAppData, "Google", "Chrome", "User Data", "Default", "Cache"),
                 ["Edge"] = Path.Combine(localAppData, "Microsoft", "Edge", "User Data", "Default", "Cache"),
-                ["Firefox"] = Path.Combine(localAppData, "Mozilla", "Firefox", "Profiles"),
                 ["Chrome Code Cache"] = Path.Combine(localAppData, "Google", "Chrome", "User Data", "Default", "Code Cache"),
                 ["Edge Code Cache"] = Path.Combine(localAppData, "Microsoft", "Edge", "User Data", "Default", "Code Cache"),
             };
+
+            var firefoxProfiles = Path.Combine(appData, "Mozilla", "Firefox", "Profiles");
+            if (Directory.Exists(firefoxProfiles))
+            {
+                foreach (var profile in Directory.GetDirectories(firefoxProfiles))
+                {
+                    var ffCache = Path.Combine(profile, "cache2");
+                    if (Directory.Exists(ffCache))
+                        browserPaths[$"Firefox {Path.GetFileName(profile)}"] = ffCache;
+                }
+            }
 
             var total = browserPaths.Count;
             int current = 0;
@@ -336,17 +347,26 @@ public class WindowsCleaner : ISystemCleaner
                 StatusMessage = LocalizationService.GetString("EmptyingRecycleBin")
             });
 
-            await Task.Run(() =>
+            bool success = await Task.Run(() =>
             {
-                // SHFileOperation is deprecated; use SHEmptyRecycleBin via P/Invoke
                 uint hr = SHEmptyRecycleBin(IntPtr.Zero, null,
                     (uint)(RecycleBinFlags.SHRB_NOCONFIRMATION | RecycleBinFlags.SHRB_NOPROGRESS));
-                if (hr != 0 && hr != 0x8000FFFF)
-                    throw new InvalidOperationException($"SHEmptyRecycleBin failed with HRESULT 0x{hr:X8}");
+                return hr == 0 || hr == 0x8000FFFF;
             }, ct);
 
-            result.Success = true;
-            result.Message = "Recycle bin emptied successfully";
+            if (!success)
+                success = await EmptyRecycleBinManuallyAsync(progress, ct);
+
+            if (success)
+            {
+                result.Success = true;
+                result.Message = "Recycle bin emptied successfully";
+            }
+            else
+            {
+                result.Success = false;
+                result.Message = "Failed to empty recycle bin — try running as administrator";
+            }
         }
         catch (OperationCanceledException)
         {
@@ -360,6 +380,49 @@ public class WindowsCleaner : ISystemCleaner
         }
 
         return result;
+    }
+
+    private static async Task<bool> EmptyRecycleBinManuallyAsync(
+        IProgress<CleanProgress>? progress, CancellationToken ct)
+    {
+        bool anyDeleted = false;
+
+        foreach (var drive in DriveInfo.GetDrives().Where(d => d.DriveType == DriveType.Fixed && d.IsReady))
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var recyclePath = Path.Combine(drive.RootDirectory.FullName, "$Recycle.Bin");
+            if (!Directory.Exists(recyclePath)) continue;
+
+            try
+            {
+                foreach (var sidDir in Directory.GetDirectories(recyclePath))
+                {
+                    ct.ThrowIfCancellationRequested();
+
+                    foreach (var file in Directory.GetFiles(sidDir))
+                    {
+                        ct.ThrowIfCancellationRequested();
+
+                        try
+                        {
+                            File.Delete(file);
+                            anyDeleted = true;
+                        }
+                        catch
+                        {
+                            // File locked or access denied — skip
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Cannot access this drive's recycle bin — skip
+            }
+        }
+
+        return anyDeleted;
     }
 
     public async Task<CleanResult> CleanSystemLogsAsync(
@@ -1056,25 +1119,7 @@ public class WindowsCleaner : ISystemCleaner
 
     private void CleanAutostartKeys(CancellationToken ct)
     {
-        // Clean startup folder - only remove suspicious executable/script files
-        var startupPath = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
-        if (Directory.Exists(startupPath))
-        {
-            var suspiciousExtensions = new[] { ".exe", ".bat", ".cmd", ".vbs", ".ps1", ".js", ".wsf", ".com" };
-            foreach (var file in Directory.GetFiles(startupPath))
-            {
-                ct.ThrowIfCancellationRequested();
-                try
-                {
-                    var ext = Path.GetExtension(file);
-                    if (suspiciousExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
-                        File.Delete(file);
-                }
-                catch { }
-            }
-        }
-
-        // Clean Run keys (same as registry cleanup but focused on autostart)
+        // Only clean Run/RunOnce registry keys (non-destructive)
         CleanRegistryKeys(ct);
     }
 
@@ -1119,6 +1164,8 @@ public class WindowsCleaner : ISystemCleaner
         using var process = Process.Start(psi);
         if (process != null)
         {
+            var output = process.StandardOutput.ReadToEndAsync(ct);
+            var error = process.StandardError.ReadToEndAsync(ct);
             process.WaitForExit(120000); // 2 min timeout
             if (process.ExitCode != 0)
                 throw new InvalidOperationException($"PowerShell restore point creation failed with exit code {process.ExitCode}");
@@ -1200,9 +1247,7 @@ public class WindowsCleaner : ISystemCleaner
                     FileName = "ipconfig",
                     Arguments = "/flushdns",
                     UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
+                    CreateNoWindow = true
                 };
                 using var process = Process.Start(psi);
                 process?.WaitForExit(10000);
@@ -1408,7 +1453,7 @@ public class WindowsCleaner : ISystemCleaner
                 {
                     FileName = "cmd.exe",
                     Arguments = "/c del /q /f \"%LocalAppData%\\Microsoft\\Windows\\Explorer\\thumbcache_*.db\"",
-                    UseShellExecute = false,
+                    UseShellExecute = true,
                     CreateNoWindow = true
                 };
                 using var process = Process.Start(psi);
@@ -1462,8 +1507,7 @@ public class WindowsCleaner : ISystemCleaner
                 Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "Microsoft", "Windows", "WER", "Temp"),
                 // Memory dump files in Windows folder
-                Path.Combine(winDir, "Windows", "MEMORY.DMP"),
-                Path.Combine(winDir, "Windows", "Minidump")
+                Path.Combine(winDir, "Windows", "MEMORY.DMP")
             };
 
             // Also search for .dmp, .mdmp, .hdmp files in common locations
